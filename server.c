@@ -218,7 +218,10 @@ void deinitAndErr( int eval, const char* fmt )
 int main( int argc, char *argv[] )
 {
 	int s_list;
+	int s_client;
 	struct sockaddr_in serv_addr;
+	struct sockaddr_in client_addr;
+	int sin_size;
 
 	if ( loadConfig() < 0 )
 	{
@@ -252,7 +255,17 @@ int main( int argc, char *argv[] )
 	if ( listen( s_list, LISTENQ ) < 0 )
 		deinitAndErr( EXIT_FAILURE, "server: Impossibile ascoltare sulla porta" );
 
+	sin_size = sizeof( client_addr );
+	while ( s_client = accept( s_list, &client_addr, &sin_size ) )
+	{
+		if ( s_client < 0 ) 
+		{
+			if ( errno != EINTR )
+				warn( "server: Impossibile accettare una connessione in entrata" );
+			continue;
+		}
 
+		
 
 }
 
