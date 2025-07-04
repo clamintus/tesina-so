@@ -1,13 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <string.h>
 #include <err.h>
 #include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include "types.h"
 #include "helpers.h"
 
-const char* CONFIG_PATH = "serverconf";
+const char* CONFIG_PATH   = "serverconf";
 const char* DATABASE_PATH = "msgdb";
+const int   LISTENQ       = 1024;
 
 #define BUF_SIZE 65536
 char buffer[BUF_SIZE];
@@ -204,7 +209,54 @@ int delDatabaseEntry( uint32_t entry_id )
 	return -1;
 }
 
+void deinitAndErr( int eval, const char* fmt )
+{
+	unloadDatabase();
+	err( eval, fmt );
+}
+
 int main( int argc, char *argv[] )
+{
+	int s_list;
+	struct sockaddr_in serv_addr;
+
+	if ( loadConfig() < 0 )
+	{
+		fprintf( stderr, "server: File di configurazione non trovato.\n" );
+		exit( EXIT_FAILURE );
+	}
+	if ( loadDatabase() < 0 )
+	{
+		int db_fp;
+	        while ( ( db_fp = creat( DATABASE_PATH, 0666 ) ) < 0 )
+			if ( errno != EINTR )
+				err( EXIT_FAILURE, "server: Impossibile creare il file database" );
+		while ( close( db_fp ) < 0 )
+			if ( errno != EINTR )
+				err( EXIT_FAILURE, "server: Impossibile chiudere il nuovo database" );
+	}
+#ifdef DEBUG
+	printf( "Caricate %d entry nel database.\n", gPostCount );
+#endif
+
+	if ( s_list = socket( AF_INET, SOCK_STREAM, 0 ) < 0 )
+		deinitAndErr( EXIT_FAILURE, "server: Errore nella creazione della socket" );
+
+	serv_addr.sin_family      = AF_INET;
+	serv_addr.sin_port        = gPort;
+	serv_addr.sin_addr.s_addr = INADDR_ANY;
+
+	if ( bind( s_list, ( struct sockaddr *)&serv_addr, sizeof( serv_addr ) < 0 ) )
+		deinitAndErr( EXIT_FAILURE, "server: Errore nel binding della socket" );
+
+	if ( listen( s_list, LISTENQ ) < 0 )
+		deinitAndErr( EXIT_FAILURE, "server: Impossibile ascoltare sulla porta" );
+
+
+
+}
+
+void test( void )
 {
 	if ( loadConfig() < 0 )
 	{
