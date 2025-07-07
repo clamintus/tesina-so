@@ -33,6 +33,9 @@ int gPort = 3010;
 
 Post *gPosts[2048];
 int gPostCount = 0;
+char *gUsers[256][2];
+int gUserCount = 0;
+int is_admin[256];
 
 int loadConfig( void )
 {
@@ -216,6 +219,77 @@ int delDatabaseEntry( uint32_t entry_id )
 			return 0;
 		}
 	}
+
+	return -1;
+}
+
+int loadUsers( void )
+{
+	char user[256];
+	char pass[256];
+	int is_admin;
+
+      userdbfileopen:
+	FILE *fp = fopen( USERDB_PATH, "w" );
+	if ( !fp )
+	{
+		if ( errno == EINTR )
+			goto userdbfileopen;
+		return -1;
+	}
+
+	while ( fgets( buffer, BUF_SIZE, fp ) )
+	{
+		if ( sscanf( buffer, "%[^\x1f]\x1f%[^\x1f]\x1f%d", user, pass, is_admin + gUserCount ) < 3 )
+			continue;
+
+		gUsers[ gUserCount ][ 0 ] = strdup( user );
+		gUsers[ gUserCount ][ 1 ] = strdup( pass );
+		if ( gUsers[ gUsercount ][ 0 ]  == NULL || gUsers[ gUserCount ][ 1 ] == NULL )
+		{
+			fprintf( stderr, "loadUsers: memoria insufficiente\n" );
+			fclose( fp );
+			exit( EXIT_FAILURE );
+		}
+
+		gUserCount++;
+	}
+
+	while ( fclose( fp ) )
+	{
+		if ( errno != EINTR )
+			err( EXIT_FAILURE, "loadUsers: errore nella close" );
+	}
+
+	return gUserCount;
+}
+	
+void unloadUsers( void )
+{
+	for ( int i = 0; i < gUserCount; i++ )
+	{
+		free( gUsers[ i ][ 0 ] );
+		free( gUsers[ i ][ 1 ] );
+	}
+	is_admin[ i ] = 0;
+
+	gUserCount = 0;
+}
+
+/*  0: utente standard    *
+ *  1: amministratore     *
+ * -1: credenziali errate */
+
+int tryLogin( const char* user, const char* pass )
+{
+	for ( int i = 0; i < gUserCount; i++ )
+		if ( !strcmp( gUsers[ i ][ 0 ], user ) )
+		{
+			if ( !strcmp( gUsers[ i ][ 1 ], pass ) )
+				return is_admin[ i ];
+			else
+				return -1;
+		}
 
 	return -1;
 }
@@ -422,37 +496,55 @@ void* clientSession( void* arg )
 		/* Login required */
 		msg_buf[0] = SERV_AUTHENTICATE;
 		msg_size = 1;
-		
-		int ret = SendAndGetResponse( session->sockfd, msg_buf, &msg_size, CLI_LOGIN );
-		
-		if ( ret < 0 )
+			
+		while (1)
 		{
-			closeSocket( session->sockfd );
-			return NULL;
-		}
-		else if ( ret )
-		{
-			fprintf( stderr, "server: Ricevuto campo inaspettato (%#08b diverso da LOGIN). Chiudo la connessione.\n", *msg_buf );
-			closeSocket( session->sockfd );
-			return NULL;
-		}
-		
-		// Rimane il caso CLI_LOGIN
-		memcpy( client_user, msg_buf + 3             , msg_buf[1] );
-		memcpy( client_pass, msg_buf + 3 + msg_buf[1], msg_buf[2] );
-		user_auth_level = 0;
-
-		msg_buf[0] = SERV_OK;
-		while ( send( session->sockfd, msg_buf, 1, 0 ) < 0 )
-		{
-			if ( errno != EINTR )
+			int ret = SendAndGetResponse( session->sockfd, msg_buf, &msg_size, CLI_LOGIN );
+			
+			if ( ret < 0 )
 			{
-				warn( "server: Errore nella send, chiudo la connessione.\nMotivo" );
 				closeSocket( session->sockfd );
 				return NULL;
 			}
+			else if ( ret )
+			{
+				fprintf( stderr, "server (#%d): Ricevuto campo inaspettato (%#08b diverso da LOGIN). Chiudo la connessione.\n",
+						session->tid, *msg_buf );
+				closeSocket( session->sockfd );
+				return NULL;
+			}
+			
+			// Rimane il caso CLI_LOGIN
+			memcpy( client_user, msg_buf + 3             , msg_buf[1] );
+			memcpy( client_pass, msg_buf + 3 + msg_buf[1], msg_buf[2] );
+			client_user[ msg_buf[1] ] = '\0';
+			client_pass[ msg_buf[2] ] = '\0';
+			
+			if ( ( user_auth_level = tryLogin( client_user, client_pass ) ) >= 0 )
+				break;
+			
+			/* Autenticazione fallita, rispondi con SERV_NOT_OK */
+			msg_buf[0] = SERV_NOT_OK;
+			msg_size = 1;
 		}
 	}
+
+	uint16_t post_count = gPostCount;
+	msg_buf[0] = SERV_WELCOME;
+	msg_buf[1] = ( unsigned char )user_auth_level;
+	memcpy( msg_buf + 2, &post_count, 2 );
+	msg_size = 4;
+
+	/* Main loop */
+	while (1)
+	{
+		int ret = sendAndGetResponse( session->sockfd, msg_buf, &msg_size, 0 );
+		if ( ret < 0 )
+		{
+			printf( "server (#%d): Chiudo la connessione.\n", session->tid );
+			closeSocket( session->sockfd );
+			return NULL;
+		}
 
 		
 
