@@ -42,7 +42,7 @@ ssize_t getPostSize( Post *post )
 	       1 +               // len_mittente
 	       1 +               // len_oggetto
 	       2 +               // len_testo
-	       4 +               // timestamp
+	       8 +               // timestamp
 	       post->len_mittente +
 	       post->len_oggetto  +
 	       len_testo;
