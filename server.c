@@ -15,6 +15,7 @@
 
 const char* CONFIG_PATH   = "serverconf";
 const char* DATABASE_PATH = "msgdb";
+const char* USERDB_PATH   = "users";
 const int   LISTENQ       = 1024;
 
 #define MAXCONNS 1024
@@ -245,7 +246,7 @@ int loadUsers( void )
 
 		gUsers[ gUserCount ][ 0 ] = strdup( user );
 		gUsers[ gUserCount ][ 1 ] = strdup( pass );
-		if ( gUsers[ gUsercount ][ 0 ]  == NULL || gUsers[ gUserCount ][ 1 ] == NULL )
+		if ( gUsers[ gUserCount ][ 0 ]  == NULL || gUsers[ gUserCount ][ 1 ] == NULL )
 		{
 			fprintf( stderr, "loadUsers: memoria insufficiente\n" );
 			fclose( fp );
@@ -270,8 +271,8 @@ void unloadUsers( void )
 	{
 		free( gUsers[ i ][ 0 ] );
 		free( gUsers[ i ][ 1 ] );
+		is_admin[ i ] = 0;
 	}
-	is_admin[ i ] = 0;
 
 	gUserCount = 0;
 }
@@ -538,7 +539,7 @@ void* clientSession( void* arg )
 	/* Main loop */
 	while (1)
 	{
-		int ret = sendAndGetResponse( session->sockfd, msg_buf, &msg_size, 0 );
+		int ret = SendAndGetResponse( session->sockfd, msg_buf, &msg_size, 0 );
 		if ( ret < 0 )
 		{
 			printf( "server (#%d): Chiudo la connessione.\n", session->tid );
@@ -547,6 +548,7 @@ void* clientSession( void* arg )
 		}
 
 		
+	}
 
 }
 
@@ -573,8 +575,25 @@ int main( int argc, char *argv[] )
 			if ( errno != EINTR )
 				err( EXIT_FAILURE, "server: Impossibile chiudere il nuovo database" );
 	}
+	if ( loadUsers() < 0 )
+	{
+		int userdb_fp;
+	        while ( ( userdb_fp = creat( USERDB_PATH, 0666 ) ) < 0 )
+			if ( errno != EINTR )
+				err( EXIT_FAILURE, "server: Impossibile creare il file utenti" );
+		while ( close( userdb_fp ) < 0 )
+			if ( errno != EINTR )
+				err( EXIT_FAILURE, "server: Impossibile chiudere il nuovo database" );
+
+		if ( !gAllowGuests )
+		{
+			fprintf( stderr, "server: Nessun utente trovato, ma il server è configurato per non permettere connessioni anonime.\n" );
+			exit( EXIT_SUCCESS );
+		}
+	}
 #ifdef DEBUG
 	printf( "Caricate %d entry nel database.\n", gPostCount );
+	printf( "Caricate %d credenziali utente.\n", gUserCount );
 #endif
 
 	if ( s_list = socket( AF_INET, SOCK_STREAM, 0 ) < 0 )
