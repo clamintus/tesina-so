@@ -228,10 +228,9 @@ int loadUsers( void )
 {
 	char user[256];
 	char pass[256];
-	int is_admin;
 
       userdbfileopen:
-	FILE *fp = fopen( USERDB_PATH, "w" );
+	FILE *fp = fopen( USERDB_PATH, "r" );
 	if ( !fp )
 	{
 		if ( errno == EINTR )
@@ -596,14 +595,15 @@ int main( int argc, char *argv[] )
 	printf( "Caricate %d credenziali utente.\n", gUserCount );
 #endif
 
-	if ( s_list = socket( AF_INET, SOCK_STREAM, 0 ) < 0 )
+	if ( ( s_list = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 		deinitAndErr( EXIT_FAILURE, "server: Errore nella creazione della socket" );
 
+	bzero( &serv_addr, sizeof( serv_addr ) );
 	serv_addr.sin_family      = AF_INET;
-	serv_addr.sin_port        = gPort;
+	serv_addr.sin_port        = htons( ( short int )gPort );
 	serv_addr.sin_addr.s_addr = INADDR_ANY;
 
-	if ( bind( s_list, ( struct sockaddr *)&serv_addr, sizeof( serv_addr ) < 0 ) )
+	if ( bind( s_list, ( struct sockaddr *)&serv_addr, sizeof( serv_addr ) ) < 0 )
 		deinitAndErr( EXIT_FAILURE, "server: Errore nel binding della socket" );
 
 	if ( listen( s_list, LISTENQ ) < 0 )

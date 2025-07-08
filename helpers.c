@@ -48,17 +48,17 @@ ssize_t getPostSize( Post *post )
 	       len_testo;
 }	
 
-ssize_t encode_LoginForm( void* dst, const char* user, const char* pass )
-{
-	uint8_t len_user = strlen( user );
-	uint8_t len_pass = strlen( pass );
-
-	*dst = malloc( 2 + len_user + len_pass );
-	if ( !(*dst) ) return -1;
-	memcpy( *dst               , &len_user, 1 );
-	memcpy( *dst + 1           , &len_pass, 1 );
-	memcpy( *dst + 2           , user, len_user );
-	memcpy( *dst + 2 + len_user, pass, len_pass );
-
-	return 2 + len_user + len_pass;
-}
+//ssize_t encode_LoginForm( void* dst, const char* user, const char* pass )
+//{
+//	uint8_t len_user = strlen( user );
+//	uint8_t len_pass = strlen( pass );
+//
+//	*dst = malloc( 2 + len_user + len_pass );
+//	if ( !(*dst) ) return -1;
+//	memcpy( *dst               , &len_user, 1 );
+//	memcpy( *dst + 1           , &len_pass, 1 );
+//	memcpy( *dst + 2           , user, len_user );
+//	memcpy( *dst + 2 + len_user, pass, len_pass );
+//
+//	return 2 + len_user + len_pass;
+//}
