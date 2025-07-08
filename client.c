@@ -10,6 +10,7 @@
 #include "types.h"
 #include "helpers.h"
 
+Post *gLoadedPosts[10] = { 0 };
 /*
  *  CLIENT:
  *  - argv[] -> addr, port
@@ -79,40 +80,34 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 	/* Receive and decode */
 	switch ( *msg_buf )
 	{
-		case CLI_LOGIN:
-		case CLI_POST:
-		case CLI_DELPOST:
-			if ( rc = sockReceiveAll( sockfd, msg_buf + 1, 2 ) < 0 )
+		case SERV_WELCOME:
+			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 11 ) ) < 0 )
 				return -1;
 			*len += rc;
-			n_to_receive = msg_buf[1] + msg_buf[2];
-			if ( rc = sockReceiveAll( sockfd, msg_buf + 3, n_to_receive ) < 0 )
-				return -1;
-			*len += rc;
-			
-			if ( *msg_buf == CLI_POST )
-			{
-				unsigned char* msg_buf_2;
-				msg_buf_2 = msg_buf + 3 + n_to_receive;
-				if ( rc = sockReceiveAll( sockfd, msg_buf_2, POST_HEADER_SIZE ) < 0 )
-					return -1;
-				*len += rc;
-				n_to_receive  = conv_u16( msg_buf_2 + 6, TO_HOST );	// len_testo
-				n_to_receive += msg_buf_2[4];				// len_mittente
-				n_to_receive += msg_buf_2[5];				// len_oggetto
-				if ( rc = sockReceiveAll( sockfd, msg_buf_2 + POST_HEADER_SIZE, n_to_receive ) < 0 )
-					return -1;
-				*len += rc;
-			}
-			else if ( *msg_buf == CLI_DELPOST )
-			{
-				if ( rc = sockReceiveAll( sockfd, msg_buf + 3 + n_to_receive, 4 ) < 0 )
-					return -1;
-				*len += rc;
-				conv_u32( msg_buf + 3 + n_to_receive, TO_HOST );	// id
-			}
-			break;
+			conv_u16( msg_buf + 2, TO_HOST );
+			conv_u64( msg_buf + 4, TO_HOST );
 
+		case SERV_ENTRIES:
+			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 1 ) ) < 0 )
+				return -1;
+			*len += rc;
+
+			for ( int i = 0; i < 10; i++ )
+				if ( gLoadedPosts[i] )
+				{
+					free( gLoadedPosts[i] );
+					gLoadedPosts[i] = NULL;
+				}
+
+			unsigned char *scanptr = msg_buf + 1;
+			for ( int i = 0; i < msg_buf[1]; i++ )
+			{
+				tmp_u32 = conv_u32( scanptr,     TO_HOST );	// id
+				tmp_u16 = conv_u16( scanptr + 6, TO_HOST );	// len_testo
+				tmp_u64 = conv_u64( scanptr + 8, TO_HOST );	// timestamp
+				scanptr += POST_HEADER_SIZE + tmp_u16 + scanptr[4] + scanptr[5];
+			}
+				
 		case CLI_GETPOSTS:
 			if ( rc = sockReceiveAll( sockfd, msg_buf + 1, 2 ) < 0 )
 				return -1;

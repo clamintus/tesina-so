@@ -4,6 +4,39 @@
 #include <arpa/inet.h>
 #include "types.h"
 
+uint16_t conv_u16( void* u16_addr, enum conv_type to_what )
+{
+	uint16_t tmp_u16;
+
+	memcpy( &tmp_u16, u16_addr, 2 );
+	tmp_u16 = to_what == TO_NETWORK ? htons( tmp_u16 ) : ntohs( tmp_u16 );
+	memcpy( u16_addr, &tmp_u16, 2 );
+	
+	return to_what == TO_HOST ? tmp_u16 : *( uint16_t *)u16_addr;
+}
+
+uint32_t conv_u32( void* u32_addr, enum conv_type to_what )
+{
+	uint32_t tmp_u32;
+
+	memcpy( &tmp_u32, u32_addr, 4 );
+	tmp_u32 = to_what == TO_NETWORK ? htonl( tmp_u32 ) : ntohl( tmp_u32 );
+	memcpy( u32_addr, &tmp_u32, 4 );
+
+	return to_what == TO_HOST ? tmp_u32 : *( uint32_t *)u32_addr;
+}
+
+uint64_t conv_u64( void* u64_addr, enum conv_type to_what )
+{
+	uint64_t tmp_u64;
+
+	memcpy( &tmp_u64, u64_addr, 8 );
+	tmp_u64 = to_what == TO_NETWORK ? htobe64( tmp_u64 ) : be64toh( tmp_u64 );
+	memcpy( u64_addr, &tmp_u64, 8 );
+
+	return to_what == TO_HOST ? tmp_u64 : *( uint64_t *)u64_addr;
+}
+	
 int getValidInput( char* dest, int max_size, const char* prompt )
 {
 	int length;

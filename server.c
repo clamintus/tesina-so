@@ -338,42 +338,6 @@ int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
 	return len;
 }
 
-enum conv_type {
-	TO_HOST,
-	TO_NETWORK
-};
-
-uint16_t conv_u16( void* u16_addr, enum conv_type to_what )
-{
-	uint16_t tmp_u16;
-
-	memcpy( &tmp_u16, u16_addr, 2 );
-	tmp_u16 = to_what == TO_NETWORK ? htons( tmp_u16 ) : ntohs( tmp_u16 );
-	memcpy( u16_addr, &tmp_u16, 2 );
-	
-	return tmp_u16;
-}
-uint32_t conv_u32( void* u32_addr, enum conv_type to_what )
-{
-	uint32_t tmp_u32;
-
-	memcpy( &tmp_u32, u32_addr, 4 );
-	tmp_u32 = to_what == TO_NETWORK ? htonl( tmp_u32 ) : ntohl( tmp_u32 );
-	memcpy( u32_addr, &tmp_u32, 4 );
-
-	return tmp_u32;
-}
-uint64_t conv_u64( void* u64_addr, enum conv_type to_what )
-{
-	uint64_t tmp_u64;
-
-	memcpy( &tmp_u64, u64_addr, 8 );
-	tmp_u64 = to_what == TO_NETWORK ? htobe64( tmp_u64 ) : be64toh( tmp_u64 );
-	memcpy( u64_addr, &tmp_u64, 8 );
-
-	return tmp_u64;
-}
-	
 int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_Frametype resp )
 {
 	int ret;
@@ -533,7 +497,8 @@ void* clientSession( void* arg )
 	msg_buf[0] = SERV_WELCOME;
 	msg_buf[1] = ( unsigned char )user_auth_level;
 	memcpy( msg_buf + 2, &post_count, 2 );
-	msg_size = 4;
+	/* inserisci orario locale... */
+	msg_size = 8;
 
 	/* Main loop */
 	while (1)
