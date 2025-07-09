@@ -430,7 +430,7 @@ void* clientSession( void* arg )
 	unsigned char	    client_user[256];
 	unsigned char	    client_pass[256];
 	int 		    user_auth_level = -1;
-	unsigned char 	    msg_buf[65535];
+	unsigned char 	    msg_buf[655360];
 	size_t 		    msg_size;
 
 	printf( "server: Spawnato un nuovo thread per gestire la connessione in entrata di %s\n", inet_ntoa( session->client_addr ) );
@@ -488,12 +488,43 @@ void* clientSession( void* arg )
 		int ret = SendAndGetResponse( session->sockfd, msg_buf, &msg_size, 0 );
 		if ( ret < 0 )
 		{
-			printf( "server (#%d): Chiudo la connessione.\n", session->tid );
+			printf( "server: Sessione di %s terminata\n", inet_ntoa( session->client_addr ) );
 			closeSocket( session->sockfd );
 			return NULL;
 		}
 
-		
+		switch ( *msg_buf )
+		{
+			case CLI_GETPOSTS:
+				uint8_t        page    = msg_buf[1];
+				uint8_t        limit   = msg_buf[2];
+				uint8_t	       count   = 0;
+				unsigned char* scanptr = msg_buf + 2;
+
+				for ( unsigned int i = (page - 1) * limit; i < page * limit; i++ )
+				{
+					if ( i >= gPostCount )
+						break;
+
+					Post *curr_post = gPosts[i];
+
+					uint16_t len_testo;
+					memcpy( &len_testo, &curr_post->len_testo, 2 );
+					size_t post_size = curr_post->len_mittente + curr_post->len_oggetto + len_testo;
+
+					memcpy( scanptr, curr_post, POST_HEADER_SIZE + post_size );
+					scanptr += POST_HEADER_SIZE + post_size;
+					count++;
+				}
+
+				msg_buf[0] = SERV_ENTRIES;
+				msg_buf[1] = count;
+				msg_size = scanptr - msg_buf;
+				break;
+
+			case CLI_POST:
+
+		}
 	}
 
 }
@@ -530,13 +561,14 @@ int main( int argc, char *argv[] )
 		while ( close( userdb_fp ) < 0 )
 			if ( errno != EINTR )
 				err( EXIT_FAILURE, "server: Impossibile chiudere il nuovo database" );
-
-		if ( !gAllowGuests )
-		{
-			fprintf( stderr, "server: Nessun utente trovato, ma il server è configurato per non permettere connessioni anonime.\n" );
-			exit( EXIT_SUCCESS );
-		}
 	}
+
+	if ( gUserCount == 0 && !gAllowGuests )
+	{
+		fprintf( stderr, "server: Nessun utente trovato, ma il server è configurato per non permettere connessioni anonime.\n" );
+		exit( EXIT_SUCCESS );
+	}
+
 #ifdef DEBUG
 	printf( "Caricate %d entry nel database.\n", gPostCount );
 	printf( "Caricate %d credenziali utente.\n", gUserCount );

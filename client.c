@@ -256,6 +256,13 @@ int main( int argc, char *argv[] )
 
 	printf( "\nBenvenuto nella bacheca elettronica.\nPost presenti: %u\nOrario del server: %lld\n", n_posts, server_time );
 
+	msg_buf[0] = CLI_GETPOSTS;
+	msg_buf[1] = 1;
+	msg_buf[2] = 10;
+	msg_size   = 3;
+
+	ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_ENTRIES );
+
 	return 0;
 
 	for ( int i = 0; i < 10; i++ )
