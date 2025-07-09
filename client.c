@@ -1,16 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <string.h>
+#include <errno.h>
 #include <err.h>
 #include "types.h"
 #include "helpers.h"
 
+int   s_sock;
 Post *gLoadedPosts[10] = { 0 };
+
 /*
  *  CLIENT:
  *  - argv[] -> addr, port
@@ -51,9 +55,15 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 
 	switch ( *msg_buf )
 	{
-		case SERV_WELCOME:
-			conv_u16( msg_buf + 2, TO_NETWORK );	// n_posts
-			conv_u64( msg_buf + 4, TO_NETWORK );	// local_time
+		case CLI_POST:
+		case CLI_DELPOST:
+			int offset = 3 + msg_buf[1] + msg_buf[2];	// CLI_POST + header + len_user + len_pass
+			conv_u32( msg_buf + offset, TO_NETWORK );	// id
+			if ( *msg_buf == CLI_POST )
+			{
+				conv_u16( msg_buf + offset + 6, TO_NETWORK );	// len_testo
+				conv_u64( msg_buf + offset + 8, TO_NETWORK );	// timestamp
+			}
 			break;
 
 		default:
@@ -73,8 +83,8 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 	{
 		if ( errno != EINTR )
 			return -1;
+	}
 
-	size_t 	n_to_receive;
 	ssize_t rc;
 
 	/* Receive and decode */
@@ -84,50 +94,61 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 11 ) ) < 0 )
 				return -1;
 			*len += rc;
-			conv_u16( msg_buf + 2, TO_HOST );
-			conv_u64( msg_buf + 4, TO_HOST );
+			conv_u16( msg_buf + 2, TO_HOST );	// n_posts
+			conv_u64( msg_buf + 4, TO_HOST );	// local_time
+			break;
 
 		case SERV_ENTRIES:
 			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 1 ) ) < 0 )
 				return -1;
 			*len += rc;
 
-			for ( int i = 0; i < 10; i++ )
-				if ( gLoadedPosts[i] )
-				{
-					free( gLoadedPosts[i] );
-					gLoadedPosts[i] = NULL;
-				}
-
-			unsigned char *scanptr = msg_buf + 1;
+			unsigned char *scanptr = msg_buf + 2;
 			for ( int i = 0; i < msg_buf[1]; i++ )
 			{
+				if ( ( rc = sockReceiveAll( sockfd, scanptr, POST_HEADER_SIZE ) ) < 0 )
+					return -1;
+				*len += rc;
 				tmp_u32 = conv_u32( scanptr,     TO_HOST );	// id
 				tmp_u16 = conv_u16( scanptr + 6, TO_HOST );	// len_testo
 				tmp_u64 = conv_u64( scanptr + 8, TO_HOST );	// timestamp
-				scanptr += POST_HEADER_SIZE + tmp_u16 + scanptr[4] + scanptr[5];
-			}
-				
-		case CLI_GETPOSTS:
-			if ( rc = sockReceiveAll( sockfd, msg_buf + 1, 2 ) < 0 )
-				return -1;
-			*len += rc;
-			break;
 
+				if ( ( rc = sockReceiveAll( sockfd, scanptr + POST_HEADER_SIZE, tmp_u16 + scanptr[4] + scanptr[5] ) ) < 0 )
+					return -1;
+				*len += rc;
+				scanptr += POST_HEADER_SIZE + rc;
+			}
+			break;	
+				
 		default:
 			break;
 	}
 
+	return msg_buf[0] == resp;
+}
+
+void exitProgram( int exit_code )
+{
+	close( s_sock );
+	for ( int i = 0; i < 10; i++ )
+		if ( gLoadedPosts[i] )
+		{
+			free( gLoadedPosts[i] );
+			gLoadedPosts[i] = NULL;
+		}
+
+	exit( exit_code );
+}
 
 int main( int argc, char *argv[] )
 {
 	char 		   *s_addr;
 	int  		    s_port;
-	int  		    s_sock;
 	char 		    user[256];
 	char 		    pass[256];
 	int  		    auth_level = -1;
-	char  		    msg_buf[65536];
+	char  		    msg_buf[655360];
+	size_t		    msg_size;
 	struct sockaddr_in  servaddr;
 	struct hostent     *he;
 
@@ -167,15 +188,81 @@ int main( int argc, char *argv[] )
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port   = htons( (unsigned short int)s_port );
 
-	if ( connect( s_sock, &servaddr, sizeof( servaddr ) ) < 0 )
+	printf( "Connessione a %s:%d...\n", inet_ntoa( servaddr.sin_addr ), s_port );
+
+	if ( connect( s_sock, (struct sockaddr *)&servaddr, sizeof( servaddr ) ) < 0 )
 		err( EXIT_FAILURE, "client: impossibile connettersi al server" );
 
 	
 	/* Main loop */
 
 #ifdef DEBUG
+	printf( "Connessione stabilita.\n\n" );
 	printf( "Indirizzo: %s\tPorta: %d\n", s_addr, s_port );
 #endif
+
+	int ret;
+       	while ( ( ret = recv( s_sock, msg_buf, 1, 0 ) ) < 0 )
+	{
+		if ( errno != EINTR )
+		{
+			warn( "client: ricezione fallita" );
+			exitProgram( EXIT_FAILURE );
+		}
+	}
+
+	if ( *msg_buf == SERV_AUTHENTICATE )
+	{
+		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", argv[1] );
+
+		while (1)
+		{
+			int len_user, len_pass;
+
+			if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
+				exit( EXIT_FAILURE );
+			if ( ( len_pass = getValidInput( pass, 256, "Password: " ) ) < 0 )
+				exit( EXIT_FAILURE );
+
+			msg_buf[0] = CLI_LOGIN;
+			msg_buf[1] = len_user;
+			msg_buf[2] = len_pass;
+			memcpy( msg_buf + 3           , user, len_user );
+			memcpy( msg_buf + 3 + len_user, pass, len_pass );
+			msg_size = 3 + len_user + len_pass;
+
+			if ( SendAndGetResponse( s_sock, msg_buf, &msg_size, 0 ) < 0 )
+				exit( EXIT_FAILURE );
+
+			if ( *msg_buf == SERV_WELCOME )
+				break;
+
+			printf( "\nCredenziali errate, riprova.\n" );
+		}
+	}
+	else
+	{
+		if ( sockReceiveAll( s_sock, msg_buf + 1, 11 ) < 0 )
+			exitProgram( EXIT_FAILURE );
+		conv_u16( msg_buf + 2, TO_HOST );
+		conv_u64( msg_buf + 4, TO_HOST );
+	}
+
+	uint16_t n_posts;
+	int64_t  server_time;
+	memcpy( &n_posts, msg_buf + 2, 2 );
+	memcpy( &server_time, msg_buf + 4, 8 );
+
+	printf( "\nBenvenuto nella bacheca elettronica.\nPost presenti: %u\nOrario del server: %lld\n", n_posts, server_time );
+
+	return 0;
+
+	for ( int i = 0; i < 10; i++ )
+		if ( gLoadedPosts[i] )
+		{
+			free( gLoadedPosts[i] );
+			gLoadedPosts[i] = NULL;
+		}
 
 	return 0;
 }

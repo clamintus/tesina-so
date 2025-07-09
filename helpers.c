@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <arpa/inet.h>
+#include "helpers.h"
 #include "types.h"
 
 uint16_t conv_u16( void* u16_addr, enum conv_type to_what )
@@ -95,3 +97,25 @@ ssize_t getPostSize( Post *post )
 //
 //	return 2 + len_user + len_pass;
 //}
+
+int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
+{
+	int n_left = len;
+	int ret;
+
+	while ( n_left )
+	{
+		if ( ( ret = recv( sockfd, msg_buf, n_left, 0 ) ) < 0 )
+		{
+			if ( errno == EINTR )
+				ret = 0;
+			else
+				return -1;
+		}
+		msg_buf += ret;
+		n_left  -= ret;
+	}
+
+	return len;
+}
+

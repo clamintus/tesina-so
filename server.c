@@ -317,27 +317,6 @@ void closeSocket( int sockfd )
 	 - se ricevuto non RESP: closeSocket -> 1
 	 - se ricevuto RESP: decodifica BUF -> host order -> ritorna (0)	*/
 
-int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
-{
-	int n_left = len;
-	int ret;
-
-	while ( n_left )
-	{
-		if ( ( ret = recv( sockfd, msg_buf, n_left, 0 ) ) < 0 )
-		{
-			if ( errno == EINTR )
-				ret = 0;
-			else
-				return -1;
-		}
-		msg_buf += ret;
-		n_left  -= ret;
-	}
-
-	return len;
-}
-
 int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_Frametype resp )
 {
 	int ret;
@@ -399,11 +378,11 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 		case CLI_LOGIN:
 		case CLI_POST:
 		case CLI_DELPOST:
-			if ( rc = sockReceiveAll( sockfd, msg_buf + 1, 2 ) < 0 )
+			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 2 ) ) < 0 )
 				return -1;
 			*len += rc;
 			n_to_receive = msg_buf[1] + msg_buf[2];
-			if ( rc = sockReceiveAll( sockfd, msg_buf + 3, n_to_receive ) < 0 )
+			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 3, n_to_receive ) ) < 0 )
 				return -1;
 			*len += rc;
 			
@@ -411,19 +390,19 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 			{
 				unsigned char* msg_buf_2;
 				msg_buf_2 = msg_buf + 3 + n_to_receive;
-				if ( rc = sockReceiveAll( sockfd, msg_buf_2, POST_HEADER_SIZE ) < 0 )
+				if ( ( rc = sockReceiveAll( sockfd, msg_buf_2, POST_HEADER_SIZE ) ) < 0 )
 					return -1;
 				*len += rc;
 				n_to_receive  = conv_u16( msg_buf_2 + 6, TO_HOST );	// len_testo
 				n_to_receive += msg_buf_2[4];				// len_mittente
 				n_to_receive += msg_buf_2[5];				// len_oggetto
-				if ( rc = sockReceiveAll( sockfd, msg_buf_2 + POST_HEADER_SIZE, n_to_receive ) < 0 )
+				if ( ( rc = sockReceiveAll( sockfd, msg_buf_2 + POST_HEADER_SIZE, n_to_receive ) ) < 0 )
 					return -1;
 				*len += rc;
 			}
 			else if ( *msg_buf == CLI_DELPOST )
 			{
-				if ( rc = sockReceiveAll( sockfd, msg_buf + 3 + n_to_receive, 4 ) < 0 )
+				if ( ( rc = sockReceiveAll( sockfd, msg_buf + 3 + n_to_receive, 4 ) ) < 0 )
 					return -1;
 				*len += rc;
 				conv_u32( msg_buf + 3 + n_to_receive, TO_HOST );	// id
@@ -431,7 +410,7 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 			break;
 
 		case CLI_GETPOSTS:
-			if ( rc = sockReceiveAll( sockfd, msg_buf + 1, 2 ) < 0 )
+			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 2 ) ) < 0 )
 				return -1;
 			*len += rc;
 			break;
@@ -472,8 +451,8 @@ void* clientSession( void* arg )
 			}
 			else if ( ret )
 			{
-				fprintf( stderr, "server (#%d): Ricevuto campo inaspettato (%#08b diverso da LOGIN). Chiudo la connessione.\n",
-						session->tid, *msg_buf );
+				fprintf( stderr, "server (#%lu): Ricevuto campo inaspettato (%#08b diverso da LOGIN). Chiudo la connessione.\n",
+						(unsigned long)session->tid, *msg_buf );
 				closeSocket( session->sockfd );
 				return NULL;
 			}
@@ -498,7 +477,9 @@ void* clientSession( void* arg )
 	msg_buf[1] = ( unsigned char )user_auth_level;
 	memcpy( msg_buf + 2, &post_count, 2 );
 	/* inserisci orario locale... */
-	msg_size = 8;
+	int64_t local_time = ( int64_t )time( NULL );
+	memcpy( msg_buf + 4, &local_time, 8 );
+	msg_size = 12;
 
 	/* Main loop */
 	while (1)
