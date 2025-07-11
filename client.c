@@ -263,6 +263,36 @@ int main( int argc, char *argv[] )
 
 	ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_ENTRIES );
 
+	msg_buf[0] = CLI_POST;
+	msg_buf[1] = strlen( user );
+	msg_buf[2] = strlen( pass );
+	strcpy( msg_buf + 3, user );
+	strcpy( msg_buf + 3 + strlen( user ), pass );
+
+	const char* TEST_MITT = "Sergio";
+	const char* TEST_OGG  = "Prova";
+	const char* TEST_TEXT = "Questo e' un messaggio di prova!!!!!!!!!!!!!!!!!!!!!";
+	
+	Post *newpost = malloc( POST_HEADER_SIZE + strlen( TEST_MITT ) + strlen( TEST_OGG ) + strlen( TEST_TEXT ) );
+	uint32_t id = 0x11223344;
+	uint64_t timestamp = 0xFFFFFFFFFFFFFFFF;
+	newpost->len_mittente = strlen( TEST_MITT );
+	newpost->len_oggetto = strlen( TEST_OGG );
+	uint16_t len_testo = strlen( TEST_TEXT );
+	memcpy( &newpost->id, &id, 4 );
+	memcpy( &newpost->len_testo, &len_testo, 2 );
+	memcpy( &newpost->timestamp, &timestamp, 8 );
+
+	strcpy( newpost->data, TEST_MITT );
+	strcat( newpost->data, TEST_OGG );
+	strcat( newpost->data, TEST_TEXT );
+
+	size_t post_size = POST_HEADER_SIZE + newpost->len_mittente + newpost->len_oggetto + len_testo;
+	memcpy( msg_buf + 3 + strlen( user ) + strlen( pass ), newpost, post_size );
+	msg_size = 3 + strlen( user ) + strlen( pass ) + post_size;
+	ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
+	free( newpost );
+	
 	return 0;
 
 	for ( int i = 0; i < 10; i++ )

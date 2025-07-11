@@ -127,7 +127,7 @@ int loadDatabase( void )
 
 	while ( fgets( buffer, BUF_SIZE, fp ) )
 	{
-		if ( sscanf( buffer, "%[^\x1f]\x1f%llu\x1f%[^\x1f]\x1f%[^\x1f]\x1f%s", id_buf, &timestamp, mittente, oggetto, testo ) < 5 )
+		if ( sscanf( buffer, "%[^\x1f]\x1f%llu\x1f%[^\x1f]\x1f%[^\x1f]\x1f%[^\n]", id_buf, &timestamp, mittente, oggetto, testo ) < 5 )
 			continue;
 
 		len_mittente = strlen( mittente );
@@ -178,6 +178,8 @@ int storeDatabase( void )
 		Post *curr_post = gPosts[ i ];
 		if ( !curr_post->id )
 			continue;
+		uint16_t len_testo;
+		memcpy( &len_testo, &curr_post->len_testo, 2 );
 		// for ( int j = 0; j < sizeof( curr_post->id ); j++ )
 		// 	fprintf( fp, "%02x", ( ( unsigned char *)&curr_post->id )[ j ] );
 		fprintf( fp, "%08x\x1f%u\x1f", curr_post->id, curr_post->timestamp );
@@ -185,7 +187,7 @@ int storeDatabase( void )
 		fputc( '\x1f', fp );
 		fwrite( curr_post->data + curr_post->len_mittente, curr_post->len_oggetto, 1, fp );
 		fputc( '\x1f', fp );
-		fwrite( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto, curr_post->len_testo, 1, fp );
+		fwrite( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto, len_testo, 1, fp );
 		fputc( '\n', fp );
 	}
 
@@ -523,7 +525,63 @@ void* clientSession( void* arg )
 				break;
 
 			case CLI_POST:
+				msg_size = 2;
 
+				if ( gPostCount == 2048 )
+				{
+					msg_buf[0] = SERV_NOT_OK;
+					msg_buf[1] = 0xFF;
+					break;
+				}
+
+				memcpy( client_user, msg_buf + 3, msg_buf[1] );
+				memcpy( client_pass, msg_buf + 3 + msg_buf[1], msg_buf[2] );
+				client_user[ msg_buf[1] ] = '\0';
+				client_user[ msg_buf[2] ] = '\0';
+				if ( tryLogin( client_user, client_pass ) < 1 )
+				{
+					msg_buf[0] = SERV_NOT_OK;
+					msg_buf[1] = 0;
+					break;
+				}
+
+				Post *sent_post = (Post *)( msg_buf + 3 + msg_buf[1] + msg_buf[2] );
+				uint16_t len_testo;
+				memcpy( &len_testo, &sent_post->len_testo, 2 );
+
+				gPosts[ gPostCount ] = malloc( POST_HEADER_SIZE + strlen( client_user ) + sent_post->len_oggetto + len_testo );
+				if ( !gPosts[ gPostCount ] )
+				{
+					/* Out of memory! */
+					msg_buf[0] = SERV_NOT_OK;
+					msg_buf[1] = 0x01;
+					break;
+				}
+				Post *new_post = gPosts[ gPostCount++ ];
+
+				memcpy( new_post, sent_post, POST_HEADER_SIZE );
+
+				// ignora l'ID inviato insieme al post e creane uno ex novo
+				arc4random_buf( &new_post->id, 4 );
+				// ignora anche il timestamp inviato dal client, utilizza al suo posto l'orario attuale del server
+				int64_t curr_time = time( NULL );
+				memcpy( &new_post->timestamp, &curr_time, 8 );
+				// ignora il mittente (potrebbe essere spoofato, utilizza al suo posto l'username del client)
+				size_t userlen = strlen( client_user );
+				new_post->len_mittente = userlen;
+
+				memcpy( (char*)new_post  + POST_HEADER_SIZE, client_user, userlen );
+				memcpy( (char*)new_post  + POST_HEADER_SIZE + userlen,
+					(char*)sent_post + POST_HEADER_SIZE + sent_post->len_mittente,  sent_post->len_oggetto );
+				memcpy( (char*)new_post  + POST_HEADER_SIZE + userlen                 + sent_post->len_oggetto,
+					(char*)sent_post + POST_HEADER_SIZE + sent_post->len_mittente + sent_post->len_oggetto, len_testo );
+
+				printf( "server: Nuovo messaggio pubblicato da %s\n", inet_ntoa( session->client_addr ) );
+				if ( storeDatabase() < 0 )
+					printf( "server: Impossibile aggiornare il database dei messaggi\n" );
+
+				msg_buf[0] = SERV_OK;
+				break;
 		}
 	}
 
