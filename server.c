@@ -471,7 +471,7 @@ void* clientSession( void* arg )
 			
 			/* Autenticazione fallita, rispondi con SERV_NOT_OK */
 			msg_buf[0] = SERV_NOT_OK;
-			msg_size = 1;
+			msg_size = 2;
 		}
 	}
 
@@ -581,7 +581,65 @@ void* clientSession( void* arg )
 					printf( "server: Impossibile aggiornare il database dei messaggi\n" );
 
 				msg_buf[0] = SERV_OK;
+				msg_size = 1;
 				break;
+
+			case CLI_DELPOST:
+				msg_size = 2;
+
+				memcpy( client_user, msg_buf + 3, msg_buf[1] );
+				memcpy( client_pass, msg_buf + 3 + msg_buf[1], msg_buf[2] );
+				client_user[ msg_buf[1] ] = '\0';
+				client_user[ msg_buf[2] ] = '\0';
+				if ( tryLogin( client_user, client_pass ) < 1 )
+				{
+					msg_buf[0] = SERV_NOT_OK;
+					msg_buf[1] = 0;
+					break;
+				}
+
+				uint32_t post_id;
+				memcpy( &post_id, msg_buf + 3 + msg_buf[1] + msg_buf[2], 4 );
+				if ( post_id == 0x0 )
+				{
+					msg_buf[0] = SERV_NOT_OK;
+					msg_buf[1] = 0x0;
+					break;
+				}
+
+				int post_index = -1;
+				for ( int i = 0; i < gPostCount; i++ )
+				{
+					if ( !memcmp( &gPosts[i]->id, &post_id, 4 ) )
+						post_index = i;
+				}
+
+				if ( post_index == -1 )
+				{
+					msg_buf[0] = SERV_NOT_OK;
+					msg_buf[1] = 0xFF;
+					break;
+				}
+
+				if ( memcmp( gPosts[ post_index ]->data, client_user, gPosts[ post_index ]->len_mittente ) )
+				{
+					msg_buf[0] = SERV_NOT_OK;
+					msg_buf[1] = 0x1;
+					break;
+				}
+
+				bzero( &gPosts[ post_index ]->id, 4 );
+				storeDatabase();
+				unloadDatabase();
+				loadDatabase();
+
+				msg_buf[0] = SERV_OK;
+				msg_size = 1;
+				break;
+
+			default:
+				break;
+
 		}
 	}
 
@@ -605,20 +663,20 @@ int main( int argc, char *argv[] )
 		int db_fp;
 	        while ( ( db_fp = creat( DATABASE_PATH, 0666 ) ) < 0 )
 			if ( errno != EINTR )
-				err( EXIT_FAILURE, "server: Impossibile creare il file database" );
+				err( EXIT_FAILURE, "Impossibile creare il file database" );
 		while ( close( db_fp ) < 0 )
 			if ( errno != EINTR )
-				err( EXIT_FAILURE, "server: Impossibile chiudere il nuovo database" );
+				err( EXIT_FAILURE, "Impossibile chiudere il nuovo database" );
 	}
 	if ( loadUsers() < 0 )
 	{
 		int userdb_fp;
 	        while ( ( userdb_fp = creat( USERDB_PATH, 0666 ) ) < 0 )
 			if ( errno != EINTR )
-				err( EXIT_FAILURE, "server: Impossibile creare il file utenti" );
+				err( EXIT_FAILURE, "Impossibile creare il file utenti" );
 		while ( close( userdb_fp ) < 0 )
 			if ( errno != EINTR )
-				err( EXIT_FAILURE, "server: Impossibile chiudere il nuovo database" );
+				err( EXIT_FAILURE, "Impossibile chiudere il nuovo database" );
 	}
 
 	if ( gUserCount == 0 && !gAllowGuests )

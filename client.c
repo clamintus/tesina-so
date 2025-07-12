@@ -120,6 +120,11 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 				scanptr += POST_HEADER_SIZE + rc;
 			}
 			break;	
+
+		case SERV_NOT_OK:
+			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 1 ) ) < 0 )
+				return -1;
+			*len += rc;
 				
 		default:
 			break;
@@ -292,6 +297,17 @@ int main( int argc, char *argv[] )
 	msg_size = 3 + strlen( user ) + strlen( pass ) + post_size;
 	ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
 	free( newpost );
+
+	msg_buf[0] = CLI_DELPOST;
+	msg_buf[1] = strlen( user );
+	msg_buf[2] = strlen( pass );
+	strcpy( msg_buf + 3, user );
+	strcpy( msg_buf + 3 + msg_buf[1], pass );
+	uint32_t post_id = 0xdbc5ab84;
+	memcpy( msg_buf + 3 + msg_buf[1] + msg_buf[2], &post_id, 4 );
+	msg_size = 3 + msg_buf[1] + msg_buf[2] + 4;
+	ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
+	printf( "%d\n", ret );
 	
 	return 0;
 
