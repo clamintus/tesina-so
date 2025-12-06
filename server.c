@@ -113,7 +113,7 @@ int loadDatabase( void )
 	unsigned long len_mittente;
 	unsigned long len_oggetto;
 	unsigned long len_testo;
-	unsigned long long timestamp;
+	signed long long timestamp;
 	int count = 0;
         
     dbfileopen:
@@ -127,7 +127,7 @@ int loadDatabase( void )
 
 	while ( fgets( buffer, BUF_SIZE, fp ) )
 	{
-		if ( sscanf( buffer, "%[^\x1f]\x1f%llu\x1f%[^\x1f]\x1f%[^\x1f]\x1f%[^\n]", id_buf, &timestamp, mittente, oggetto, testo ) < 5 )
+		if ( sscanf( buffer, "%[^\x1f]\x1f%lld\x1f%[^\x1f]\x1f%[^\x1f]\x1f%[^\n]", id_buf, &timestamp, mittente, oggetto, testo ) < 5 )
 			continue;
 
 		len_mittente = strlen( mittente );
@@ -300,6 +300,7 @@ int tryLogin( const char* user, const char* pass )
 void deinitAndErr( int eval, const char* fmt )
 {
 	unloadDatabase();
+	unloadUsers();
 	err( eval, fmt );
 }
 
@@ -590,7 +591,7 @@ void* clientSession( void* arg )
 				memcpy( client_user, msg_buf + 3, msg_buf[1] );
 				memcpy( client_pass, msg_buf + 3 + msg_buf[1], msg_buf[2] );
 				client_user[ msg_buf[1] ] = '\0';
-				client_user[ msg_buf[2] ] = '\0';
+				client_pass[ msg_buf[2] ] = '\0';
 				if ( tryLogin( client_user, client_pass ) < 1 )
 				{
 					msg_buf[0] = SERV_NOT_OK;

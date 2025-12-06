@@ -259,7 +259,15 @@ int main( int argc, char *argv[] )
 	memcpy( &n_posts, msg_buf + 2, 2 );
 	memcpy( &server_time, msg_buf + 4, 8 );
 
-	printf( "\nBenvenuto nella bacheca elettronica.\nPost presenti: %u\nOrario del server: %lld\n", n_posts, server_time );
+	printf( "\nBenvenuto nella bacheca elettronica di %s.\nPost presenti: %u\nOrario del server: %lld\n", argv[1], n_posts, server_time );
+	printf( "\nInvio) Leggi i post\n    q) Esci\n\n> " );
+
+	int get1 = getchar();
+	if ( get1 & 0b11011111 == 'Q' ) exitProgram( EXIT_SUCCESS );
+	{
+		int get2 = getchar();
+		printf( "%d %d\n", get1, get2 );
+	}
 
 	msg_buf[0] = CLI_GETPOSTS;
 	msg_buf[1] = 1;
