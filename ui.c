@@ -7,21 +7,12 @@
 #include <time.h>
 
 #include "types.h"
+#include "ui.h"
 
 #define CUP(x,y) "\033[y;xH"
 
 struct termios term;
 struct winsize window;
-
-typedef struct client_state {
-	Post *cached_posts;
-	int  num_posts;
-	int  selected_post;
-	
-	// Commands
-	int pagenav_enabled;
-	int listnav_enabled;
-} ClientState;
 
 int updateWinSize()
 {
@@ -79,6 +70,31 @@ char *stringifyTimestamp( time_t timestamp )
 	return result;
 }
 
+#define ANSIREV "\033[7m\033[1m"
+#define ANSIRST "\033[0m"
+int draw_footer( ClientState *state )
+{
+	draw_hline( window.ws_row - 6 );
+	printf( "\033[%d;5H", window.ws_row - 4 );
+	
+	if ( state->listnav_enabled )
+		printf( ANSIREV " ↑ " ANSIRST "  " ANSIREV " ↓ " ANSIRST "  Naviga lista\033[%d;5H", window.ws_row - 2 );
+	if ( state->pagenav_enabled )
+		printf( ANSIREV " ← " ANSIRST "  " ANSIREV " → " ANSIRST "  Cambia pagina\033[%d;36H", window.ws_row - 4 );
+	if ( state->readpost_enabled )
+		printf( "\033[%d;36H" ANSIREV " ENTER " ANSIRST "  Leggi post\033[%d;36H", window.ws_row - 4, window.ws_row - 2 );
+	if ( state->goback_enabled )
+		printf( ANSIREV " B " ANSIRST "  Torna indietro" );
+	if ( state->quit_enabled )
+		printf( "\033[%d;63H" ANSIREV " Q " ANSIRST "  Disconnetti ed esci", window.ws_row - 4 );
+
+	printf( "\033[%d;1H\033[2K", window.ws_row - 1 );
+	draw_box();
+	
+	if ( state->state_label[0] != '\0' )
+		printf( "\033[%d;%dH" ANSIREV " %s " ANSIRST, window.ws_row - 1, window.ws_col - strlen( state->state_label ) - 3, state->state_label );
+}
+
 int drawTui_listView( ClientState *state )
 {
 	if ( updateWinSize() )
@@ -87,23 +103,30 @@ int drawTui_listView( ClientState *state )
 	//window.ws_col = 50;
 	printf( "\033[2J" );	// Erase-in Display
 	draw_box();
-	//draw_hline( 3 );
+
+	int max_posts_per_page = window.ws_row - 11;
+	if ( state->num_posts > max_posts_per_page ) state->pagenav_enabled = true;
+	state->pagenav_enabled = true;
+	state->listnav_enabled = true;
+	state->readpost_enabled = state->goback_enabled = state->quit_enabled = true;
+	strcpy( state->state_label, "We Are Charlie Kirk" );
+	//strcpy( state->state_label, "Prova" );
+	//*state->state_label = '\0';
+	draw_footer( state );
+
+	draw_hline( 3 );
 	// forse in drawTui_header()?
 	printf( "\033[2;4HBacheca Elettronica di 127.0.0.1   |   Lista post   |   Pagina 1 di 1" );
-	printf( "\033[5;3H" );
 	// drawTui_commands()...
 	
-	int max_posts_per_page = window.ws_row - 10;
-	if ( state->num_posts > max_posts_per_page ) state->pagenav_enabled = true;
-
 	for ( int i = 0; i < state->num_posts && i < max_posts_per_page; i++ )
 	{
-		Post *post = &state->cached_posts[ i ];
+		Post *post = state->cached_posts[ i ];
 		char *ora_post;
 		char *mittente = malloc( post->len_mittente + 1 );
 		char *oggetto = malloc( post->len_oggetto + 1 );
 		int64_t timestamp;
-		int selected = 1;
+		int selected = state->selected_post == i;
 
 		memcpy( &timestamp, &post->timestamp, 8 );
 		strncpy( mittente, post->data, post->len_mittente );
@@ -113,6 +136,7 @@ int drawTui_listView( ClientState *state )
 		int oggetto_trunc_pos = window.ws_col - 6 - 5 - 4 - post->len_mittente;
 		if ( strlen( oggetto ) > oggetto_trunc_pos ) oggetto[ oggetto_trunc_pos ] = '\0';	// tronca oggetto se più lungo di schermo
 
+		printf( "\033[%d;3H", 5 + i );
 		printf( "%s %s %s %s\n\033[3GP", selected ? "*" : " ", ora_post, mittente, oggetto );
 
 		free( mittente );
@@ -127,18 +151,26 @@ int main()
 	const char *mittente = "Sergio";
 	const char *oggetto = "Provaaaaaaaaaaaaaaaijeejfeifjeijfejwfhouefhowuehfoweuhfewoufhweoufhweoufhweofweouhfewuhofwehofwehfowehfoeuwfhewoufhwoehfweuofhweuofhweouhfweouhfhweoufhweoufwhefoweufwuoehfwouehf+++";
 
-	Post *post = malloc( sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
-	post->id = 1;
-	post->len_mittente = strlen( mittente );
-	post->len_oggetto = strlen( oggetto );
-	post->len_testo = strlen( testo );
-	post->timestamp = 1765033000;
-	sprintf( post->data, "%s%s%s", mittente, oggetto, testo );
-	ClientState dummy_state = {post, 1, 1};
+	Post **posts = malloc( sizeof( char* ) * 2 );
+	posts[0] = malloc( sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
+	posts[1] = malloc( sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
+	posts[0]->id = 1;
+	posts[0]->len_mittente = strlen( mittente );
+	posts[0]->len_oggetto = strlen( oggetto );
+	posts[0]->len_testo = strlen( testo );
+	posts[0]->timestamp = 1765033000;
+	sprintf( posts[0]->data, "%s%s%s", mittente, oggetto, testo );
+	memcpy( posts[1], posts[0], sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
+	memcpy( posts[1]->data, "admin", 5 );
+	posts[1]->timestamp = posts[0]->timestamp - 100000;
+	posts[1]->id = 2;
+	ClientState dummy_state = {posts, 2, 0};
 
 	if ( drawTui_listView( &dummy_state ) )
 		return 1;
 
-	free( post );
+	free( posts[1] );
+	free( posts[0] );
+	free( posts );
 	return 0;
 }
