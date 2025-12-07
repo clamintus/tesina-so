@@ -10,11 +10,15 @@
 #include <string.h>
 #include <errno.h>
 #include <err.h>
+#include <termios.h>
 #include "types.h"
 #include "helpers.h"
+#include "ui.h"
 
 int   s_sock;
 Post *gLoadedPosts[10] = { 0 };
+
+ClientState gState;
 
 /*
  *  CLIENT:
@@ -143,6 +147,7 @@ void exitProgram( int exit_code )
 			gLoadedPosts[i] = NULL;
 		}
 
+	setTerminalMode( TERM_CANON );
 	exit( exit_code );
 }
 
@@ -219,6 +224,7 @@ int main( int argc, char *argv[] )
 
 	if ( *msg_buf == SERV_AUTHENTICATE )
 	{
+		setTerminalMode( TERM_CANON );
 		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", argv[1] );
 
 		while (1)
@@ -227,8 +233,10 @@ int main( int argc, char *argv[] )
 
 			if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
 				exit( EXIT_FAILURE );
+			setTerminalMode( TERM_CANON_NOECHO );
 			if ( ( len_pass = getValidInput( pass, 256, "Password: " ) ) < 0 )
 				exit( EXIT_FAILURE );
+			setTerminalMode( TERM_CANON );
 
 			msg_buf[0] = CLI_LOGIN;
 			msg_buf[1] = len_user;
@@ -260,21 +268,77 @@ int main( int argc, char *argv[] )
 	memcpy( &server_time, msg_buf + 4, 8 );
 
 	printf( "\nBenvenuto nella bacheca elettronica di %s.\nPost presenti: %u\nOrario del server: %lld\n", argv[1], n_posts, server_time );
-	printf( "\nInvio) Leggi i post\n    q) Esci\n\n> " );
+	printf( "\nInvio) Leggi i post\n    q) Esci\n\n" );
 
-	int get1 = getchar();
-	if ( get1 & 0b11011111 == 'Q' ) exitProgram( EXIT_SUCCESS );
+	setTerminalMode( TERM_RAW );
+
+	// Client state setup
+	gState.current_screen = STATE_INTRO;
+	gState.cached_posts = NULL;		// da popolare con un'array di N puntatori a Post (N verrà dedotto con updateWindowSize())
+	gState.num_posts = 0;
+	gState.selected_post = 0;
+	*gState.state_label = '\0';
+
+	gState.quit_enabled = true;
+
+	extern int max_posts_per_page;
+	updateWinSize();
+	gState.cached_posts = malloc( sizeof( char* ) * max_posts_per_page );
+
+	while (1)
 	{
-		int get2 = getchar();
-		printf( "%d %d\n", get1, get2 );
+		int action = getchar();
+
+		switch ( action )
+		{
+			case 'q':
+			case 'Q':
+				if ( gState.quit_enabled )
+					exitProgram( EXIT_SUCCESS );
+
+			case '\n':
+				if ( gState.current_screen == STATE_INTRO )
+				{
+					printf( "Caricamento post...\n" );
+					msg_buf[0] = CLI_GETPOSTS;
+					msg_buf[1] = 1;
+					msg_buf[2] = max_posts_per_page;
+					msg_size   = 3;
+
+					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_ENTRIES );
+
+					// Post parsing
+					gState.num_posts       = msg_buf[1];
+					unsigned char* scanptr = msg_buf + 2;
+					for ( int i = 0; i < gState.num_posts; i++ )
+					{
+						Post curr_post;
+						memcpy( &curr_post, scanptr, POST_HEADER_SIZE );
+
+						size_t post_size = curr_post.len_mittente + curr_post.len_oggetto + curr_post.len_testo;
+						gState.cached_posts[ i ] = malloc( POST_HEADER_SIZE + post_size );
+
+						*gState.cached_posts[ i ] = curr_post;
+						memcpy( gState.cached_posts[ i ]->data, scanptr + POST_HEADER_SIZE, post_size );
+
+						scanptr += POST_HEADER_SIZE + post_size;
+					}
+
+					gState.current_screen = STATE_LISTING;
+					drawTui( &gState );
+				}
+				break;
+		}
 	}
 
-	msg_buf[0] = CLI_GETPOSTS;
-	msg_buf[1] = 1;
-	msg_buf[2] = 10;
-	msg_size   = 3;
 
-	ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_ENTRIES );
+
+	//if ( ( get1 & 0b11011111 ) == 'Q' ) exitProgram( EXIT_SUCCESS );
+	//{
+	//	int get2 = getchar();
+	//	printf( "%d %d\n", get1, get2 );
+	//}
+
 
 	msg_buf[0] = CLI_POST;
 	msg_buf[1] = strlen( user );

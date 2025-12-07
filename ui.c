@@ -11,8 +11,9 @@
 
 #define CUP(x,y) "\033[y;xH"
 
-struct termios term;
+//struct termios term;
 struct winsize window;
+int max_posts_per_page;
 
 int updateWinSize()
 {
@@ -22,6 +23,7 @@ int updateWinSize()
 		return 1;
 	}
 
+	max_posts_per_page = window.ws_row - 11;
 	return 0;
 }
 
@@ -95,6 +97,14 @@ int draw_footer( ClientState *state )
 		printf( "\033[%d;%dH" ANSIREV " %s " ANSIRST, window.ws_row - 1, window.ws_col - strlen( state->state_label ) - 3, state->state_label );
 }
 
+int drawTui( ClientState *state )
+{
+	if ( state->current_screen == STATE_LISTING )
+	{
+		drawTui_listView( state );
+	}
+}
+
 int drawTui_listView( ClientState *state )
 {
 	if ( updateWinSize() )
@@ -104,12 +114,11 @@ int drawTui_listView( ClientState *state )
 	printf( "\033[2J" );	// Erase-in Display
 	draw_box();
 
-	int max_posts_per_page = window.ws_row - 11;
 	if ( state->num_posts > max_posts_per_page ) state->pagenav_enabled = true;
-	state->pagenav_enabled = true;
+	//state->pagenav_enabled = true;
 	state->listnav_enabled = true;
-	state->readpost_enabled = state->goback_enabled = state->quit_enabled = true;
-	strcpy( state->state_label, "We Are Charlie Kirk" );
+	state->readpost_enabled = state->quit_enabled = true;
+	//strcpy( state->state_label, "We Are Charlie Kirk" );
 	//strcpy( state->state_label, "Prova" );
 	//*state->state_label = '\0';
 	draw_footer( state );
@@ -145,32 +154,32 @@ int drawTui_listView( ClientState *state )
 	}
 }
 
-int main()
-{
-	const char *testo = "Solito messaggio di prova";
-	const char *mittente = "Sergio";
-	const char *oggetto = "Provaaaaaaaaaaaaaaaijeejfeifjeijfejwfhouefhowuehfoweuhfewoufhweoufhweoufhweofweouhfewuhofwehofwehfowehfoeuwfhewoufhwoehfweuofhweuofhweouhfweouhfhweoufhweoufwhefoweufwuoehfwouehf+++";
-
-	Post **posts = malloc( sizeof( char* ) * 2 );
-	posts[0] = malloc( sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
-	posts[1] = malloc( sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
-	posts[0]->id = 1;
-	posts[0]->len_mittente = strlen( mittente );
-	posts[0]->len_oggetto = strlen( oggetto );
-	posts[0]->len_testo = strlen( testo );
-	posts[0]->timestamp = 1765033000;
-	sprintf( posts[0]->data, "%s%s%s", mittente, oggetto, testo );
-	memcpy( posts[1], posts[0], sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
-	memcpy( posts[1]->data, "admin", 5 );
-	posts[1]->timestamp = posts[0]->timestamp - 100000;
-	posts[1]->id = 2;
-	ClientState dummy_state = {posts, 2, 0};
-
-	if ( drawTui_listView( &dummy_state ) )
-		return 1;
-
-	free( posts[1] );
-	free( posts[0] );
-	free( posts );
-	return 0;
-}
+//int test()
+//{
+//	const char *testo = "Solito messaggio di prova";
+//	const char *mittente = "Sergio";
+//	const char *oggetto = "Provaaaaaaaaaaaaaaaijeejfeifjeijfejwfhouefhowuehfoweuhfewoufhweoufhweoufhweofweouhfewuhofwehofwehfowehfoeuwfhewoufhwoehfweuofhweuofhweouhfweouhfhweoufhweoufwhefoweufwuoehfwouehf+++";
+//
+//	Post **posts = malloc( sizeof( char* ) * 2 );
+//	posts[0] = malloc( sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
+//	posts[1] = malloc( sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
+//	posts[0]->id = 1;
+//	posts[0]->len_mittente = strlen( mittente );
+//	posts[0]->len_oggetto = strlen( oggetto );
+//	posts[0]->len_testo = strlen( testo );
+//	posts[0]->timestamp = 1765033000;
+//	sprintf( posts[0]->data, "%s%s%s", mittente, oggetto, testo );
+//	memcpy( posts[1], posts[0], sizeof( Post ) + strlen( mittente ) + strlen( oggetto ) + strlen( testo ) + 1 );
+//	memcpy( posts[1]->data, "admin", 5 );
+//	posts[1]->timestamp = posts[0]->timestamp - 100000;
+//	posts[1]->id = 2;
+//	ClientState dummy_state = {posts, 2, 0};
+//
+//	if ( drawTui_listView( &dummy_state ) )
+//		return 1;
+//
+//	free( posts[1] );
+//	free( posts[0] );
+//	free( posts );
+//	return 0;
+//}

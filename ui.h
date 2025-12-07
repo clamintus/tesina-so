@@ -1,10 +1,18 @@
 #include "types.h"
 
+enum screen_state {
+	STATE_INTRO,
+	STATE_LISTING,
+	STATE_SINGLEPOST,
+	STATE_WRITING
+};
+
 typedef struct client_state {
-	Post **cached_posts;
-	int  num_posts;
-	int  selected_post;
-	char state_label[100];
+	enum screen_state current_screen;
+	Post 		  **cached_posts;
+	unsigned int      num_posts;
+	unsigned int      selected_post;
+	char 		  state_label[100];
 	
 	// Commands
 	int pagenav_enabled;
@@ -15,4 +23,5 @@ typedef struct client_state {
 } ClientState;
 
 int updateWinSize();
+int drawTui( ClientState *state );
 int drawTui_listView( ClientState *state );

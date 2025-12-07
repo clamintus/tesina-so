@@ -1,7 +1,7 @@
 all: client server
 
-client: client.o helpers.o
-	gcc -o client client.o helpers.o
+client: client.o helpers.o ui.o
+	gcc -o client client.o helpers.o ui.o
 
 server: server.o helpers.o
 	gcc -o server server.o helpers.o
@@ -14,6 +14,9 @@ server.o: server.c helpers.h types.h
 
 helpers.o: helpers.c helpers.h
 	gcc -c -g helpers.c
+
+ui.o: ui.c ui.h
+	gcc -c -g ui.c
 	
 clean:
-	rm client.o server.o helpers.o client server
+	rm client.o server.o helpers.o ui.o client server

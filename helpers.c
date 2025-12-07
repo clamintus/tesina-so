@@ -3,8 +3,11 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <termios.h>
 #include "helpers.h"
 #include "types.h"
+
+struct termios gOldTerminal;
 
 uint16_t conv_u16( void* u16_addr, enum conv_type to_what )
 {
@@ -119,3 +122,20 @@ int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
 	return len;
 }
 
+void setTerminalMode( enum terminal_mode mode )
+{
+	struct termios tmp_term;
+
+	tcgetattr( 0, &tmp_term );
+
+	gOldTerminal = tmp_term;
+	if      ( mode == TERM_RAW )          tmp_term.c_lflag &= ~ICANON & ~ECHO;
+	else if ( mode == TERM_CANON )        tmp_term.c_lflag |= ICANON | ECHO;
+	else if ( mode == TERM_CANON_NOECHO ) tmp_term.c_lflag &= ~ECHO;
+	tcsetattr( 0, TCSANOW, &tmp_term );
+}
+
+void restoreTerminal( void )
+{
+	tcsetattr( 0, TCSANOW, &gOldTerminal );
+}
