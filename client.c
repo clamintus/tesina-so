@@ -96,7 +96,10 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 	switch ( *msg_buf )
 	{
 		case SERV_WELCOME:
-			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 11 ) ) < 0 )
+			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 12 ) ) < 0 )
+				return -1;
+			*len += rc;
+			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 13, msg_buf[12] ) ) < 0 )
 				return -1;
 			*len += rc;
 			conv_u16( msg_buf + 2, TO_HOST );	// n_posts
@@ -139,6 +142,8 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 
 void exitProgram( int exit_code )
 {
+	if ( gState.current_screen != STATE_INTRO ) printf( "\033[2J" );
+
 	close( s_sock );
 	for ( int i = 0; i < 10; i++ )
 		if ( gLoadedPosts[i] )
@@ -157,7 +162,7 @@ int main( int argc, char *argv[] )
 	int  		    s_port;
 	char 		    user[256];
 	char 		    pass[256];
-	int  		    auth_level = -1;
+	int  		    auth_level = -1;		/* 1 amministratore, 0: utente standard, -1: anonimo */
 	char  		    msg_buf[655360];
 	size_t		    msg_size;
 	struct sockaddr_in  servaddr;
@@ -249,7 +254,10 @@ int main( int argc, char *argv[] )
 				exit( EXIT_FAILURE );
 
 			if ( *msg_buf == SERV_WELCOME )
+			{
+				auth_level = msg_buf[1];
 				break;
+			}
 
 			printf( "\nCredenziali errate, riprova.\n" );
 		}
@@ -264,10 +272,12 @@ int main( int argc, char *argv[] )
 
 	uint16_t n_posts;
 	int64_t  server_time;
+	char     board_title[260];
 	memcpy( &n_posts, msg_buf + 2, 2 );
 	memcpy( &server_time, msg_buf + 4, 8 );
+	sprintf( board_title, msg_buf[12] ? " (%.*s)" : "", msg_buf[12], msg_buf + 13 );
 
-	printf( "\nBenvenuto nella bacheca elettronica di %s.\nPost presenti: %u\nOrario del server: %lld\n", argv[1], n_posts, server_time );
+	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %lld\n", argv[1], board_title, n_posts, server_time );
 	printf( "\nInvio) Leggi i post\n    q) Esci\n\n" );
 
 	setTerminalMode( TERM_RAW );
@@ -278,6 +288,11 @@ int main( int argc, char *argv[] )
 	gState.num_posts = 0;
 	gState.selected_post = 0;
 	*gState.state_label = '\0';
+	strncpy( gState.board_title, msg_buf + 13, msg_buf[12] + 1 );
+	strncpy( gState.server_addr, argv[1], 100 );
+	gState.user = user;
+	gState.pass = pass;
+	gState.auth_level = auth_level;
 
 	gState.quit_enabled = true;
 
@@ -325,6 +340,33 @@ int main( int argc, char *argv[] )
 					}
 
 					gState.current_screen = STATE_LISTING;
+					drawTui( &gState );
+				}
+				break;
+
+
+			case 'k':
+			case 'K':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					// inserisci lettera nel buffer...
+				}
+				else if ( gState.listnav_enabled && gState.selected_post > 0 )
+				{
+					gState.selected_post--;
+					drawTui( &gState );
+				}
+				break;
+
+			case 'j':
+			case 'J':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					// inserisci lettera nel buffer...
+				}
+				else if ( gState.listnav_enabled && gState.selected_post != gState.num_posts - 1 )
+				{
+					gState.selected_post++;
 					drawTui( &gState );
 				}
 				break;

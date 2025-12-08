@@ -74,13 +74,31 @@ char *stringifyTimestamp( time_t timestamp )
 
 #define ANSIREV "\033[7m\033[1m"
 #define ANSIRST "\033[0m"
+int draw_header( ClientState *state )
+{
+	char left_text[257];
+	char right_text[100];
+	const char* tmpstr = "Lista post   |   Pagina 1 di 1";
+
+	if ( *state->board_title )
+		sprintf( left_text, "%s   |   %s", state->board_title, tmpstr );		// da troncare
+	else
+		sprintf( left_text, "Bacheca Elettronica di %s   |   %s", state->server_addr, tmpstr );
+
+	sprintf( right_text, "Loggato come:  %s%s%s", state->auth_level > 0 ? "\033[1m" : "", state->user, state->auth_level > 0 ? ANSIRST : "" );
+
+	draw_hline( 3 );
+	printf( "\033[2;4H%s\033[2;%dH%s", left_text, window.ws_col - 3 - strlen( right_text ) + ( state->auth_level ? 8 : 0 ), right_text );
+	//printf( "\033[2;4H%s", left_text );
+}
+
 int draw_footer( ClientState *state )
 {
 	draw_hline( window.ws_row - 6 );
 	printf( "\033[%d;5H", window.ws_row - 4 );
 	
 	if ( state->listnav_enabled )
-		printf( ANSIREV " ↑ " ANSIRST "  " ANSIREV " ↓ " ANSIRST "  Naviga lista\033[%d;5H", window.ws_row - 2 );
+		printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Naviga lista\033[%d;5H", window.ws_row - 2 );
 	if ( state->pagenav_enabled )
 		printf( ANSIREV " ← " ANSIRST "  " ANSIREV " → " ANSIRST "  Cambia pagina\033[%d;36H", window.ws_row - 4 );
 	if ( state->readpost_enabled )
@@ -121,35 +139,35 @@ int drawTui_listView( ClientState *state )
 	//strcpy( state->state_label, "We Are Charlie Kirk" );
 	//strcpy( state->state_label, "Prova" );
 	//*state->state_label = '\0';
+	draw_header( state );
 	draw_footer( state );
 
-	draw_hline( 3 );
-	// forse in drawTui_header()?
-	printf( "\033[2;4HBacheca Elettronica di 127.0.0.1   |   Lista post   |   Pagina 1 di 1" );
-	// drawTui_commands()...
 	
 	for ( int i = 0; i < state->num_posts && i < max_posts_per_page; i++ )
 	{
 		Post *post = state->cached_posts[ i ];
 		char *ora_post;
-		char *mittente = malloc( post->len_mittente + 1 );
-		char *oggetto = malloc( post->len_oggetto + 1 );
+		//char *mittente = malloc( post->len_mittente + 1 );
+		//char *oggetto = malloc( post->len_oggetto + 1 );
 		int64_t timestamp;
 		int selected = state->selected_post == i;
 
 		memcpy( &timestamp, &post->timestamp, 8 );
-		strncpy( mittente, post->data, post->len_mittente );
-		strncpy( oggetto, post->data + post->len_mittente, post->len_oggetto );
+		//strncpy( mittente, post->data, post->len_mittente );
+		//strncpy( oggetto, post->data + post->len_mittente, post->len_oggetto );
 		ora_post = stringifyTimestamp( (time_t)timestamp );
 		
 		int oggetto_trunc_pos = window.ws_col - 6 - 5 - 4 - post->len_mittente;
-		if ( strlen( oggetto ) > oggetto_trunc_pos ) oggetto[ oggetto_trunc_pos ] = '\0';	// tronca oggetto se più lungo di schermo
+		//if ( strlen( oggetto ) > oggetto_trunc_pos ) oggetto[ oggetto_trunc_pos ] = '\0';	// tronca oggetto se più lungo di schermo
+		if ( post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
 
 		printf( "\033[%d;3H", 5 + i );
-		printf( "%s %s %s %s\n\033[3GP", selected ? "*" : " ", ora_post, mittente, oggetto );
+		printf( "%s %s %.*s %.*s\n\033[3GP", selected ? "*" : " ", ora_post, 
+									   post->len_mittente, post->data,
+									   oggetto_trunc_pos,  post->data + post->len_mittente );
 
-		free( mittente );
-		free( oggetto );
+		//free( mittente );
+		//free( oggetto );
 		free( ora_post );
 	}
 }

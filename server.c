@@ -30,8 +30,9 @@ struct session_data {
 
 char buffer[BUF_SIZE];
 
-int gAllowGuests = 0;
-int gPort = 3010;
+int  gAllowGuests = 0;
+int  gPort = 3010;
+char gBoardTitle[256+1] = { 0 };
 
 Post *gPosts[2048];
 int gPostCount = 0;
@@ -68,7 +69,7 @@ int loadConfig( void )
 			exit( EXIT_FAILURE );
 		}
 
-		if ( sscanf( buffer, "%[^=]=%s", key_buf, value_buf ) < 2 )
+		if ( sscanf( buffer, "%[^=]=%[^\n]", key_buf, value_buf ) < 2 )
 		{
 			printf( "loadConfig: impossibile interpretare la riga \"%s\".\n", buffer );
 			continue;
@@ -91,6 +92,8 @@ int loadConfig( void )
 				exit( EXIT_FAILURE );
 			}
 		}
+		else if ( !strcmp( key_buf, "Title" ) )
+			strncpy( gBoardTitle, value_buf, 256 + 1 );
 	}
 
 	while ( fclose( fp ) )
@@ -483,7 +486,9 @@ void* clientSession( void* arg )
 	/* inserisci orario locale... */
 	int64_t local_time = ( int64_t )time( NULL );
 	memcpy( msg_buf + 4, &local_time, 8 );
-	msg_size = 12;
+	msg_buf[12] = ( unsigned char )strlen( gBoardTitle );
+	strcpy( msg_buf + 13, gBoardTitle );
+	msg_size = 13 + msg_buf[12];
 
 	/* Main loop */
 	while (1)

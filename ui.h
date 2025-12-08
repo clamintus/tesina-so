@@ -14,6 +14,13 @@ typedef struct client_state {
 	unsigned int      selected_post;
 	char 		  state_label[100];
 	
+	// Server characteristics
+	char		  board_title[257];
+	char		  server_addr[100];
+	char*		  user;
+	char*		  pass;
+	int		  auth_level;
+	
 	// Commands
 	int pagenav_enabled;
 	int listnav_enabled;
