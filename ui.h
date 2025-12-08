@@ -11,6 +11,7 @@ typedef struct client_state {
 	enum screen_state current_screen;
 	Post 		  **cached_posts;
 	unsigned int      num_posts;
+	unsigned int	  loaded_posts;
 	unsigned int      selected_post;
 	char 		  state_label[100];
 	
@@ -31,4 +32,5 @@ typedef struct client_state {
 
 int updateWinSize();
 int drawTui( ClientState *state );
-int drawTui_listView( ClientState *state );
+//int drawTui_listView( ClientState *state );
+//int drawTui_readPost( ClientState *state );

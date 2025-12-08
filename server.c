@@ -344,8 +344,9 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 		case SERV_ENTRIES:
 			unsigned char* scanptr = msg_buf;
 			int 	       data_length;
-			uint8_t        n       = scanptr[1];
-			scanptr += 2;
+			uint8_t        n       = scanptr[3];
+			conv_u16( msg_buf + 1, TO_NETWORK );	// n_posts
+			scanptr += 4;
 
 			for ( unsigned int i = 0; i < n; i++ )
 			{
@@ -507,7 +508,7 @@ void* clientSession( void* arg )
 				uint8_t        page    = msg_buf[1];
 				uint8_t        limit   = msg_buf[2];
 				uint8_t	       count   = 0;
-				unsigned char* scanptr = msg_buf + 2;
+				unsigned char* scanptr = msg_buf + 4;
 
 				for ( unsigned int i = (page - 1) * limit; i < page * limit; i++ )
 				{
@@ -526,7 +527,8 @@ void* clientSession( void* arg )
 				}
 
 				msg_buf[0] = SERV_ENTRIES;
-				msg_buf[1] = count;
+				memcpy( msg_buf + 1, &gPostCount, 2 );
+				msg_buf[3] = count;
 				msg_size = scanptr - msg_buf;
 				break;
 

@@ -107,12 +107,13 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 			break;
 
 		case SERV_ENTRIES:
-			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 1 ) ) < 0 )
+			if ( ( rc = sockReceiveAll( sockfd, msg_buf + 1, 3 ) ) < 0 )
 				return -1;
 			*len += rc;
+			conv_u16( msg_buf + 1, TO_HOST );
 
-			unsigned char *scanptr = msg_buf + 2;
-			for ( int i = 0; i < msg_buf[1]; i++ )
+			unsigned char *scanptr = msg_buf + 4;
+			for ( int i = 0; i < msg_buf[3]; i++ )
 			{
 				if ( ( rc = sockReceiveAll( sockfd, scanptr, POST_HEADER_SIZE ) ) < 0 )
 					return -1;
@@ -323,9 +324,12 @@ int main( int argc, char *argv[] )
 					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_ENTRIES );
 
 					// Post parsing
-					gState.num_posts       = msg_buf[1];
-					unsigned char* scanptr = msg_buf + 2;
-					for ( int i = 0; i < gState.num_posts; i++ )
+					uint16_t       n_posts;
+					unsigned char* scanptr = msg_buf + 4;
+					memcpy( &n_posts, msg_buf + 1, 2 );
+					gState.num_posts    = n_posts;
+					gState.loaded_posts = msg_buf[3];
+					for ( int i = 0; i < gState.loaded_posts; i++ )
 					{
 						Post curr_post;
 						memcpy( &curr_post, scanptr, POST_HEADER_SIZE );
@@ -340,6 +344,11 @@ int main( int argc, char *argv[] )
 					}
 
 					gState.current_screen = STATE_LISTING;
+					drawTui( &gState );
+				}
+				else if ( gState.current_screen == STATE_LISTING && gState.readpost_enabled )
+				{
+					gState.current_screen = STATE_SINGLEPOST;
 					drawTui( &gState );
 				}
 				break;
@@ -364,12 +373,21 @@ int main( int argc, char *argv[] )
 				{
 					// inserisci lettera nel buffer...
 				}
-				else if ( gState.listnav_enabled && gState.selected_post != gState.num_posts - 1 )
+				else if ( gState.listnav_enabled && gState.selected_post != gState.loaded_posts - 1 )
 				{
 					gState.selected_post++;
 					drawTui( &gState );
 				}
 				break;
+
+
+			case 'b':
+			case 'B':
+				if ( gState.goback_enabled )
+				{
+					gState.current_screen = STATE_LISTING;
+					drawTui( &gState );
+				}
 		}
 	}
 

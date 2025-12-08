@@ -23,7 +23,7 @@ int updateWinSize()
 		return 1;
 	}
 
-	max_posts_per_page = window.ws_row - 11;
+	max_posts_per_page = window.ws_row - 12;
 	return 0;
 }
 
@@ -78,12 +78,27 @@ int draw_header( ClientState *state )
 {
 	char left_text[257];
 	char right_text[100];
-	const char* tmpstr = "Lista post   |   Pagina 1 di 1";
+	const char* listing_str    = "Lista post   |   Pagina 1 di 1";
+	const char* writing_str    = "Scrivi post";
+	const char* singlepost_str = "Leggi post   |   Oggetto";
 
-	if ( *state->board_title )
-		sprintf( left_text, "%s   |   %s", state->board_title, tmpstr );		// da troncare
-	else
-		sprintf( left_text, "Bacheca Elettronica di %s   |   %s", state->server_addr, tmpstr );
+	switch ( state->current_screen )
+	{
+		case STATE_LISTING:
+			if ( *state->board_title )
+				sprintf( left_text, "%s   |   %s", state->board_title, listing_str );		// da troncare
+			else
+				sprintf( left_text, "Bacheca Elettronica di %s   |   %s", state->server_addr, listing_str );
+			break;
+
+		case STATE_WRITING:
+			sprintf( left_text, "%s", writing_str );
+			break;
+
+		case STATE_SINGLEPOST:
+			sprintf( left_text, "%s", singlepost_str );
+			break;
+	}
 
 	sprintf( right_text, "Loggato come:  %s%s%s", state->auth_level > 0 ? "\033[1m" : "", state->user, state->auth_level > 0 ? ANSIRST : "" );
 
@@ -115,27 +130,13 @@ int draw_footer( ClientState *state )
 		printf( "\033[%d;%dH" ANSIREV " %s " ANSIRST, window.ws_row - 1, window.ws_col - strlen( state->state_label ) - 3, state->state_label );
 }
 
-int drawTui( ClientState *state )
-{
-	if ( state->current_screen == STATE_LISTING )
-	{
-		drawTui_listView( state );
-	}
-}
-
 int drawTui_listView( ClientState *state )
 {
-	if ( updateWinSize() )
-		return 1;
-	//test
-	//window.ws_col = 50;
-	printf( "\033[2J" );	// Erase-in Display
-	draw_box();
-
 	if ( state->num_posts > max_posts_per_page ) state->pagenav_enabled = true;
 	//state->pagenav_enabled = true;
 	state->listnav_enabled = true;
 	state->readpost_enabled = state->quit_enabled = true;
+	state->goback_enabled = false;
 	//strcpy( state->state_label, "We Are Charlie Kirk" );
 	//strcpy( state->state_label, "Prova" );
 	//*state->state_label = '\0';
@@ -143,7 +144,7 @@ int drawTui_listView( ClientState *state )
 	draw_footer( state );
 
 	
-	for ( int i = 0; i < state->num_posts && i < max_posts_per_page; i++ )
+	for ( int i = 0; i < state->loaded_posts; i++ )
 	{
 		Post *post = state->cached_posts[ i ];
 		char *ora_post;
@@ -171,6 +172,46 @@ int drawTui_listView( ClientState *state )
 		free( ora_post );
 	}
 }
+
+int drawTui_readPost( ClientState *state )
+{
+	state->pagenav_enabled  = false;
+	state->listnav_enabled  = false;
+	state->readpost_enabled = false;
+	state->goback_enabled   = true;
+
+	draw_header( state );
+	draw_footer( state );
+
+	Post *curr_post = state->cached_posts[ state->selected_post ];
+
+	int l = 0;
+	printf( "\033[5;3HAutore: %.*s\033[6;3HOggetto: %.*s", curr_post->len_mittente, curr_post->data,
+	     						       curr_post->len_oggetto,  curr_post->data + curr_post->len_mittente );
+
+	// logica di stampa wrappata...
+	printf( "\033[8;3H%s", curr_post->data + curr_post->len_mittente + curr_post->len_oggetto );
+}
+	
+int drawTui( ClientState *state )
+{
+	if ( updateWinSize() )
+		return 1;
+	//test
+	//window.ws_col = 50;
+	printf( "\033[2J" );	// Erase-in Display
+	draw_box();
+
+	if ( state->current_screen == STATE_LISTING )
+	{
+		drawTui_listView( state );
+	}
+	else if ( state->current_screen == STATE_SINGLEPOST )
+	{
+		drawTui_readPost( state );
+	}
+}
+
 
 //int test()
 //{
