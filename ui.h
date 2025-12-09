@@ -1,5 +1,10 @@
 #include "types.h"
 
+#ifdef __ANDROID__
+ #define true 1
+ #define false 0
+#endif
+
 enum screen_state {
 	STATE_INTRO,
 	STATE_LISTING,
