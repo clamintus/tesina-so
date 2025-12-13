@@ -409,6 +409,8 @@ int main( int argc, char *argv[] )
 				}
 				else if ( gState.pagenav_enabled && gState.loaded_page > 1 )
 				{
+					sprintf( gState.state_label, "Caricamento dei post..." );
+					drawTui( &gState );
 					loadPosts( msg_buf, &msg_size, --gState.loaded_page );
 					gState.selected_post = 0;
 					drawTui( &gState );
@@ -423,6 +425,8 @@ int main( int argc, char *argv[] )
 				}
 				else if ( gState.pagenav_enabled && gState.loaded_page < gState.num_posts / max_posts_per_page + 1 )
 				{
+					sprintf( gState.state_label, "Caricamento dei post..." );
+					drawTui( &gState );
 					loadPosts( msg_buf, &msg_size, ++gState.loaded_page );
 					gState.selected_post = 0;
 					drawTui( &gState );
