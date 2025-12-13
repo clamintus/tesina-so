@@ -413,6 +413,7 @@ int main( int argc, char *argv[] )
 					drawTui( &gState );
 					loadPosts( msg_buf, &msg_size, --gState.loaded_page );
 					gState.selected_post = 0;
+					*gState.state_label = '\0';
 					drawTui( &gState );
 				}
 				break;
@@ -429,6 +430,7 @@ int main( int argc, char *argv[] )
 					drawTui( &gState );
 					loadPosts( msg_buf, &msg_size, ++gState.loaded_page );
 					gState.selected_post = 0;
+					*gState.state_label = '\0';
 					drawTui( &gState );
 				}
 				break;
