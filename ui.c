@@ -5,6 +5,7 @@
 #include <err.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h>
 
 #include "types.h"
 #include "ui.h"
@@ -71,6 +72,125 @@ char *stringifyTimestamp( time_t timestamp )
 
 	return result;
 }
+
+void printWrapped( const char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1 )
+{
+	unsigned short x_len = x1 - x0 + 1;
+	unsigned short y_len = y1 - y0 + 1;
+	
+	unsigned short x = x0;
+	unsigned short y = y0;
+	unsigned int   l = 0;
+
+	char* curr = str;
+	char* lines[1024];
+
+	if ( x_len <= 0 || y_len <= 0 )
+		return;
+
+	lines[ l++ ] = curr;
+	lines[ 1 ]   = curr + strlen( str );
+
+	//printf( "\033[%d;%dH", y, x );
+
+	char* curline = curr;
+	char* curword = curr;
+
+	while ( *curr )
+	{
+	      continue_outer:
+		//int has_blank = false;
+		
+		// non dovremmo arrivare a questo punto,
+		// ma se dovessimo evitiamo di corrompere la stack
+		if ( l > 1024 )
+			break;
+
+	      nextword:
+		while ( !isspace( *curr ) )
+		{
+			if ( *curr == '\0' || curr - str == size )
+			{
+				lines[ l ] = curr;
+				goto endloop;
+			}
+
+			if ( curr - curline >= x_len )
+			{
+				if ( curline == curword )
+				{
+					// La riga corrente non ha spazi (è una sola parola). Andiamo a capo
+					//printf( "%.*s\033[%d;%dH", curr - curline, curline, ++y, x0 );
+					//if ( y == y1 )
+					//	return 1;			// segnala che il campo è pieno
+
+					// Simulazione (per contare le righe necessarie)
+					lines[ l++ ] = curr;
+					curline = curr;
+					curword = curr;
+					goto continue_outer;
+					
+				}
+
+				// La riga corrente ha spazi: wrappiamola
+				lines[ l++ ] = curword;
+				curr = curword;
+				curline = curr;
+				goto continue_outer;
+			}
+
+			curr++;
+			continue;
+		}
+
+		if ( curr - str == size )
+		{
+			lines[ l ] = curr;
+			goto endloop;
+		}
+
+		if ( *curr == '\n' )
+		{
+			lines[ l++ ] = ++curr;
+			curline = curr;
+			curword = curr;
+			continue;
+		}
+
+		//has_blank = true;
+		curword = ++curr;
+		if ( curr - curline >= x_len )
+		{
+			lines[ l++ ] = curr;
+			curline = curr;
+			//curword = curr;
+			continue;
+		}
+
+		//goto nextword;
+	}
+
+endloop:
+	// Ora stampiamo effettivamente le righe
+	unsigned int start_index = 0;
+	if ( l > y_len )
+		start_index = l - y_len;
+
+	for ( unsigned int i = 0; i < y_len && start_index + i < l; i++ )
+	{
+		int line_len = lines[ start_index + i + 1 ] - lines[ start_index + i ];
+		printf( "\033[%d;%dH%.*s", y0 + i,
+				           x0,
+					   line_len, lines[ start_index + i ] );
+					   //lines[ start_index + i ][ line_len - 1 ] == '\n' ? "" : "\n" );
+	}
+	//printf( "\033[%d;%dH%s", l > y_len ? y1 : y0 + l - 1, x0, lines[ l - 1 ] );
+
+	//printf( "\033[%d;%dH%d lines", y1 + 1, x0 + 2, l );
+
+	fflush( stdout );
+}
+
 
 #define ANSIREV "\033[7m\033[1m"
 #define ANSIRST "\033[0m"
@@ -185,12 +305,23 @@ int drawTui_readPost( ClientState *state )
 
 	Post *curr_post = state->cached_posts[ state->selected_post ];
 
-	int l = 0;
-	printf( "\033[5;3HAutore: %.*s\033[6;3HOggetto: %.*s", curr_post->len_mittente, curr_post->data,
-	     						       curr_post->len_oggetto,  curr_post->data + curr_post->len_mittente );
+	//int l = 0;
+	//unsigned short padding_x = window.ws_col / 10;
+	unsigned short padding_x = 1;
+	unsigned short padding_y = 1;
 
-	// logica di stampa wrappata...
-	printf( "\033[8;3H%s", curr_post->data + curr_post->len_mittente + curr_post->len_oggetto );
+	printf( "\033[5;%1$dHAutore: %3$.*2$s\033[6;%1$dHOggetto: %5$.*4$s", 2 + padding_x,
+									     curr_post->len_mittente, curr_post->data,
+									     curr_post->len_oggetto,  curr_post->data + curr_post->len_mittente );
+	// TODO: printa anche la data!
+
+	//printf( "\033[8;3H%s", curr_post->data + curr_post->len_mittente + curr_post->len_oggetto );
+	printWrapped( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto,
+		      curr_post->len_testo,
+	                          2 + padding_x,
+		                  9 + padding_y,
+		      window.ws_col - padding_x - 1,
+		      window.ws_row - padding_y - 1 );
 }
 	
 int drawTui( ClientState *state )
