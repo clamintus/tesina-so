@@ -18,6 +18,8 @@
 int   s_sock;
 Post *gLoadedPosts[10] = { 0 };
 
+extern int max_posts_per_page;
+
 ClientState gState;
 
 /*
@@ -155,6 +157,49 @@ void exitProgram( int exit_code )
 
 	setTerminalMode( TERM_CANON );
 	exit( exit_code );
+}
+
+int loadPosts( char* msg_buf, size_t* msg_size, unsigned char page )
+{
+	msg_buf[0] = CLI_GETPOSTS;
+	msg_buf[1] = page;
+	msg_buf[2] = max_posts_per_page;
+	*msg_size  = 3;
+
+	int ret = SendAndGetResponse( s_sock, msg_buf, msg_size, SERV_ENTRIES );
+
+	if ( msg_buf[3] == 0 )
+		return 0;
+
+	// Post parsing
+	uint16_t       n_posts;
+	unsigned char* scanptr = msg_buf + 4;
+	memcpy( &n_posts, msg_buf + 1, 2 );
+	gState.num_posts    = n_posts;
+	gState.loaded_page  = page;
+	gState.loaded_posts = msg_buf[3];
+	for ( int i = 0; i < max_posts_per_page; i++ )
+		if ( gState.cached_posts[ i ] )
+		{
+			free( gState.cached_posts[ i ] );
+			gState.cached_posts[ i ] = NULL;
+		}
+	
+	for ( int i = 0; i < gState.loaded_posts; i++ )
+	{
+		Post curr_post;
+		memcpy( &curr_post, scanptr, POST_HEADER_SIZE );
+
+		size_t post_size = curr_post.len_mittente + curr_post.len_oggetto + curr_post.len_testo;
+		gState.cached_posts[ i ] = malloc( POST_HEADER_SIZE + post_size );
+
+		*gState.cached_posts[ i ] = curr_post;
+		memcpy( gState.cached_posts[ i ]->data, scanptr + POST_HEADER_SIZE, post_size );
+
+		scanptr += POST_HEADER_SIZE + post_size;
+	}
+
+	return gState.loaded_posts;
 }
 
 int main( int argc, char *argv[] )
@@ -297,7 +342,6 @@ int main( int argc, char *argv[] )
 
 	gState.quit_enabled = true;
 
-	extern int max_posts_per_page;
 	updateWinSize();
 	gState.cached_posts = malloc( sizeof( char* ) * max_posts_per_page );
 
@@ -313,36 +357,12 @@ int main( int argc, char *argv[] )
 					exitProgram( EXIT_SUCCESS );
 
 			case '\n':
+				// TODO: rendere possibile inserire a capo in post
 				if ( gState.current_screen == STATE_INTRO )
 				{
 					printf( "Caricamento post...\n" );
-					msg_buf[0] = CLI_GETPOSTS;
-					msg_buf[1] = 1;
-					msg_buf[2] = max_posts_per_page;
-					msg_size   = 3;
-
-					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_ENTRIES );
-
-					// Post parsing
-					uint16_t       n_posts;
-					unsigned char* scanptr = msg_buf + 4;
-					memcpy( &n_posts, msg_buf + 1, 2 );
-					gState.num_posts    = n_posts;
-					gState.loaded_posts = msg_buf[3];
-					for ( int i = 0; i < gState.loaded_posts; i++ )
-					{
-						Post curr_post;
-						memcpy( &curr_post, scanptr, POST_HEADER_SIZE );
-
-						size_t post_size = curr_post.len_mittente + curr_post.len_oggetto + curr_post.len_testo;
-						gState.cached_posts[ i ] = malloc( POST_HEADER_SIZE + post_size );
-
-						*gState.cached_posts[ i ] = curr_post;
-						memcpy( gState.cached_posts[ i ]->data, scanptr + POST_HEADER_SIZE, post_size );
-
-						scanptr += POST_HEADER_SIZE + post_size;
-					}
-
+					// carica post...
+					loadPosts( msg_buf, &msg_size, 1 );
 					gState.current_screen = STATE_LISTING;
 					drawTui( &gState );
 				}
@@ -376,6 +396,35 @@ int main( int argc, char *argv[] )
 				else if ( gState.listnav_enabled && gState.selected_post != gState.loaded_posts - 1 )
 				{
 					gState.selected_post++;
+					drawTui( &gState );
+				}
+				break;
+
+
+			case 'h':
+			case 'H':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					// inserisci lettera nel buffer...
+				}
+				else if ( gState.pagenav_enabled && gState.loaded_page > 1 )
+				{
+					loadPosts( msg_buf, &msg_size, --gState.loaded_page );
+					gState.selected_post = 0;
+					drawTui( &gState );
+				}
+				break;
+
+			case 'l':
+			case 'L':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					// inserisci lettera nel buffer...
+				}
+				else if ( gState.pagenav_enabled && gState.loaded_page < gState.num_posts / max_posts_per_page + 1 )
+				{
+					loadPosts( msg_buf, &msg_size, ++gState.loaded_page );
+					gState.selected_post = 0;
 					drawTui( &gState );
 				}
 				break;

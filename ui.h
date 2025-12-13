@@ -16,6 +16,7 @@ typedef struct client_state {
 	enum screen_state current_screen;
 	Post 		  **cached_posts;
 	unsigned int      num_posts;
+	unsigned int	  loaded_page;
 	unsigned int	  loaded_posts;
 	unsigned int      selected_post;
 	char 		  state_label[100];

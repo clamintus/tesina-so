@@ -59,10 +59,10 @@ char *stringifyTimestamp( time_t timestamp )
 
 	/* needs to be replaced with actual logic */
 	//sprintf( result, "01/01" );
-	tmp = gmtime( &now );
+	tmp = localtime( &now );
 	//memcpy( &now_tm, tmp, sizeof( struct tm ) );		// copy current time in now_tm
 	now_tm = *tmp;
-	tmp = gmtime( &timestamp );
+	tmp = localtime( &timestamp );
 	post_tm = *tmp;
 
 	if ( post_tm.tm_year == now_tm.tm_year && post_tm.tm_mon == now_tm.tm_mon && post_tm.tm_mday == now_tm.tm_mday )
@@ -235,7 +235,10 @@ int draw_footer( ClientState *state )
 	if ( state->listnav_enabled )
 		printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Naviga lista\033[%d;5H", window.ws_row - 2 );
 	if ( state->pagenav_enabled )
-		printf( ANSIREV " ← " ANSIRST "  " ANSIREV " → " ANSIRST "  Cambia pagina\033[%d;36H", window.ws_row - 4 );
+		printf( "%s  %s  Cambia pagina\033[%d;36H", state->loaded_page > 1 ? ANSIREV " H " ANSIRST : "   ", 
+				                            state->loaded_page < state->num_posts / max_posts_per_page + 1 ?
+							                                     ANSIREV " L " ANSIRST : "   ",
+							    window.ws_row - 4 );
 	if ( state->readpost_enabled )
 		printf( "\033[%d;36H" ANSIREV " ENTER " ANSIRST "  Leggi post\033[%d;36H", window.ws_row - 4, window.ws_row - 2 );
 	if ( state->goback_enabled )
