@@ -361,9 +361,16 @@ int main( int argc, char *argv[] )
 			case 'Q':
 				if ( gState.current_screen != STATE_WRITING )
 					exitProgram( EXIT_SUCCESS );
+				goto inserisci;
+				break;
 
 			case '\n':
 				// TODO: rendere possibile inserire a capo in post
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					action = '\v';
+					goto inserisci;
+				}
 				if ( gState.current_screen == STATE_INTRO )
 				{
 					printf( "Caricamento post...\n\033[?25l" );
@@ -441,6 +448,7 @@ int main( int argc, char *argv[] )
 				if ( gState.current_screen == STATE_WRITING )
 				{
 					// inserisci lettera nel buffer...
+					goto inserisci;
 				}
 				else if ( gState.current_screen & UI_PAGENAV && gState.loaded_page < gState.num_posts / max_posts_per_page + 1 )
 				{
@@ -456,7 +464,11 @@ int main( int argc, char *argv[] )
 
 			case 'b':
 			case 'B':
-				if ( gState.current_screen & UI_BACK && gState.current_screen != STATE_WRITING )
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					goto inserisci;
+				}
+				else if ( gState.current_screen & UI_BACK && gState.current_screen != STATE_WRITING )
 				{
 					gState.current_screen = STATE_LISTING;
 					drawTui( &gState );
@@ -576,7 +588,7 @@ int main( int argc, char *argv[] )
 				break;
 
 			inserisci:
-				if ( gState.current_draft_field == FIELD_OGGETTO && gState.len_oggetto < OGGETTO_MAXLEN )
+				if ( gState.current_draft_field == FIELD_OGGETTO && gState.len_oggetto < OGGETTO_MAXLEN && action != '\v' )
 				{
 					gState.buf_oggetto[ gState.len_oggetto++ ] = (char)action;
 					gState.buf_oggetto[ gState.len_oggetto   ] = '\0';

@@ -75,7 +75,9 @@ char *stringifyTimestamp( time_t timestamp )
 }
 
 #define ANSIREV "\033[7m\033[1m"
+#define ANSIITA "\033[2m\033[3m"
 #define ANSIRST "\033[0m"
+#define ANSIDIS "\033[30m\033[100m"
 unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1, unsigned int skip )
 {
 	unsigned short x_len = x1 - x0 + 1;
@@ -152,7 +154,7 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 			goto endloop;
 		}
 
-		if ( *curr == '\n' )
+		if ( *curr == '\v' )
 		{
 			lines[ l++ ] = ++curr;
 			curline = curr;
@@ -182,9 +184,9 @@ endloop:
 		start_index = skip;
 
 	// Also draw the scroll indicators
-	if ( skip != 0 && skip != ( unsigned int )-1 )
+	if ( start_index != 0 )
 		printf( "\033[%d;%dH" ANSIREV "[↑]" ANSIRST, y0 - 1, window.ws_col / 2 - 1 );
-	if ( l > y_len && l != y_len + skip )
+	if ( l > y_len && l != y_len + start_index )
 		printf( "\033[%d;%dH" ANSIREV "[↓]" ANSIRST, y1 + 1, window.ws_col / 2 - 1 );
 
 	for ( unsigned int i = 0; i < y_len && start_index + i < l; i++ )
@@ -222,7 +224,9 @@ int draw_header( ClientState *state )
 				      							 state->loaded_page,
 											 state->num_posts / max_posts_per_page + 1 );  // da troncare
 			else
-				sprintf( left_text, "Bacheca Elettronica di %s   |   %s", state->server_addr, listing_str );
+				sprintf( left_text, "Bacheca Elettronica di %s   |   %s   |   Pagina %u di %u", state->server_addr, listing_str,
+				      										state->loaded_page,
+				      									state->num_posts / max_posts_per_page + 1 );
 			break;
 
 		case STATE_WRITING:
@@ -254,9 +258,9 @@ int draw_footer( ClientState *state )
 		printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Scorri testo\033[%d;5H", window.ws_row - 2 );
 
 	if ( state->current_screen & UI_PAGENAV && state->num_posts > max_posts_per_page )
-		printf( "%s  %s  Cambia pagina\033[%d;36H", state->loaded_page > 1 ? ANSIREV " H " ANSIRST : "   ", 
+		printf( "%s  %s  Cambia pagina\033[%d;36H", state->loaded_page > 1 ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
 				                            state->loaded_page < state->num_posts / max_posts_per_page + 1 ?
-							                                     ANSIREV " L " ANSIRST : "   ",
+							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST,
 							    window.ws_row - 4 );
 
 	if ( state->current_screen & UI_READPOST )
@@ -271,12 +275,12 @@ int draw_footer( ClientState *state )
 		printf( ANSIREV " %sB " ANSIRST "  Torna indietro", state->current_screen == STATE_WRITING ? "^" : "" );
 
 	if ( state->current_screen == STATE_WRITING )
-		printf( "\033[%d;36H" ANSIREV " <TAB> " ANSIRST "  Cambia campo", window.ws_row - 4 );
+		printf( "\033[%d;36H" ANSIREV " TAB " ANSIRST "  Cambia campo", window.ws_row - 4 );
 	
 	if ( state->current_screen != STATE_WRITING )
 		printf( "\033[%d;63H" ANSIREV " Q " ANSIRST "  Disconnetti ed esci", window.ws_row - 4 );
 
-	printf( "\033[%d;1H\033[0K\033[%dG┃", window.ws_row - 1, window.ws_col );
+	printf( "\033[%d;2H\033[0K\033[%dG┃", window.ws_row - 1, window.ws_col );
 	//draw_box();
 	
 	if ( state->state_label[0] != '\0' )
@@ -312,12 +316,14 @@ int drawTui_listView( ClientState *state )
 		
 		int oggetto_trunc_pos = window.ws_col - 6 - 5 - 4 - post->len_mittente;
 		//if ( strlen( oggetto ) > oggetto_trunc_pos ) oggetto[ oggetto_trunc_pos ] = '\0';	// tronca oggetto se più lungo di schermo
-		if ( post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
+		if ( post->len_oggetto &&
+		     post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
 
 		printf( "\033[%d;3H", 5 + i );
 		printf( "%s %s %.*s %.*s", selected ? "*" : " ", ora_post, 
 								 post->len_mittente, post->data,
-								 oggetto_trunc_pos,  post->data + post->len_mittente );
+								 oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
+								 					 ANSIITA "(nessun oggetto)" ANSIRST );
 
 		//free( mittente );
 		//free( oggetto );
@@ -343,7 +349,9 @@ int drawTui_readPost( ClientState *state )
 
 	printf( "\033[5;%1$dHAutore: %3$.*2$s\033[6;%1$dHOggetto: %5$.*4$s", 2 + padding_x,
 									     curr_post->len_mittente, curr_post->data,
-									     curr_post->len_oggetto,  curr_post->data + curr_post->len_mittente );
+									     curr_post->len_oggetto ? curr_post->len_oggetto : -1,
+									     curr_post->len_oggetto ? curr_post->data + curr_post->len_mittente :
+									     			      ANSIITA "(nessun oggetto)" ANSIRST );
 	// TODO: printa anche la data!
 	
 	//printf( "\033[7;%dHOffset: %u", 2 + padding_x, state->more_lines );
