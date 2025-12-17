@@ -16,11 +16,13 @@
 #include "ui.h"
 
 int   s_sock;
-Post *gLoadedPosts[10] = { 0 };
+//Post *gLoadedPosts[10] = { 0 };
+ClientState gState;
+
+#define OGGETTO_MAXLEN 255
+#define TESTO_MAXLEN 60000
 
 extern int max_posts_per_page;
-
-ClientState gState;
 
 /*
  *  CLIENT:
@@ -148,14 +150,18 @@ void exitProgram( int exit_code )
 	if ( gState.current_screen != STATE_INTRO ) printf( "\033[2J" );
 
 	close( s_sock );
-	for ( int i = 0; i < 10; i++ )
-		if ( gLoadedPosts[i] )
+	for ( int i = 0; i < gState.loaded_posts; i++ )
+		if ( gState.cached_posts[i] )
 		{
-			free( gLoadedPosts[i] );
-			gLoadedPosts[i] = NULL;
+			free( gState.cached_posts[i] );
+			gState.cached_posts[i] = NULL;
 		}
 
+	free( gState.cached_posts );
+	gState.cached_posts = NULL;
+
 	setTerminalMode( TERM_CANON );
+	printf( "\033[?25h" );	// show cursor
 	exit( exit_code );
 }
 
@@ -340,7 +346,7 @@ int main( int argc, char *argv[] )
 	gState.pass = pass;
 	gState.auth_level = auth_level;
 
-	gState.quit_enabled = true;
+	//gState.quit_enabled = true;
 
 	updateWinSize();
 	gState.cached_posts = malloc( sizeof( char* ) * max_posts_per_page );
@@ -353,22 +359,23 @@ int main( int argc, char *argv[] )
 		{
 			case 'q':
 			case 'Q':
-				if ( gState.quit_enabled )
+				if ( gState.current_screen != STATE_WRITING )
 					exitProgram( EXIT_SUCCESS );
 
 			case '\n':
 				// TODO: rendere possibile inserire a capo in post
 				if ( gState.current_screen == STATE_INTRO )
 				{
-					printf( "Caricamento post...\n" );
+					printf( "Caricamento post...\n\033[?25l" );
 					// carica post...
 					loadPosts( msg_buf, &msg_size, 1 );
 					gState.current_screen = STATE_LISTING;
 					drawTui( &gState );
 				}
-				else if ( gState.current_screen == STATE_LISTING && gState.readpost_enabled )
+				else if ( gState.current_screen & UI_READPOST )
 				{
 					gState.current_screen = STATE_SINGLEPOST;
+					gState.post_offset = 0;
 					drawTui( &gState );
 				}
 				break;
@@ -378,9 +385,14 @@ int main( int argc, char *argv[] )
 			case 'K':
 				if ( gState.current_screen == STATE_WRITING )
 				{
-					// inserisci lettera nel buffer...
+					goto inserisci;
 				}
-				else if ( gState.listnav_enabled && gState.selected_post > 0 )
+				else if ( gState.current_screen & UI_TEXTNAV && gState.post_offset > 0 )
+				{
+					gState.post_offset--;
+					drawTui( &gState );
+				}
+				else if ( gState.current_screen & UI_LISTNAV && gState.selected_post > 0 )
 				{
 					gState.selected_post--;
 					drawTui( &gState );
@@ -391,9 +403,14 @@ int main( int argc, char *argv[] )
 			case 'J':
 				if ( gState.current_screen == STATE_WRITING )
 				{
-					// inserisci lettera nel buffer...
+					goto inserisci;
 				}
-				else if ( gState.listnav_enabled && gState.selected_post != gState.loaded_posts - 1 )
+				else if ( gState.current_screen & UI_TEXTNAV && gState.more_lines )
+				{
+					gState.post_offset++;
+					drawTui( &gState );
+				}
+				else if ( gState.current_screen & UI_LISTNAV && gState.selected_post != gState.loaded_posts - 1 )
 				{
 					gState.selected_post++;
 					drawTui( &gState );
@@ -406,14 +423,15 @@ int main( int argc, char *argv[] )
 				if ( gState.current_screen == STATE_WRITING )
 				{
 					// inserisci lettera nel buffer...
+					goto inserisci;
 				}
-				else if ( gState.pagenav_enabled && gState.loaded_page > 1 )
+				else if ( gState.current_screen & UI_PAGENAV && gState.loaded_page > 1 )
 				{
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
 					loadPosts( msg_buf, &msg_size, --gState.loaded_page );
 					gState.selected_post = 0;
-					*gState.state_label = '\0';
+					gState.state_label[0] = '\0';
 					drawTui( &gState );
 				}
 				break;
@@ -424,13 +442,13 @@ int main( int argc, char *argv[] )
 				{
 					// inserisci lettera nel buffer...
 				}
-				else if ( gState.pagenav_enabled && gState.loaded_page < gState.num_posts / max_posts_per_page + 1 )
+				else if ( gState.current_screen & UI_PAGENAV && gState.loaded_page < gState.num_posts / max_posts_per_page + 1 )
 				{
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
 					loadPosts( msg_buf, &msg_size, ++gState.loaded_page );
 					gState.selected_post = 0;
-					*gState.state_label = '\0';
+					gState.state_label[0] = '\0';
 					drawTui( &gState );
 				}
 				break;
@@ -438,11 +456,139 @@ int main( int argc, char *argv[] )
 
 			case 'b':
 			case 'B':
-				if ( gState.goback_enabled )
+				if ( gState.current_screen & UI_BACK && gState.current_screen != STATE_WRITING )
 				{
 					gState.current_screen = STATE_LISTING;
 					drawTui( &gState );
 				}
+				break;
+
+			
+			case 'w':
+			case 'W':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					goto inserisci;
+				}
+				//else if ( gState.current_screen == UI_WRITEPOST && auth_level > -1 )
+				else if ( gState.current_screen & UI_WRITEPOST )
+				{
+					gState.current_screen = STATE_WRITING;
+					gState.buf_testo[0] = '\0';
+					gState.len_testo    = 0;
+					gState.buf_oggetto[0] = '\0';
+					gState.len_oggetto    = 0;
+					gState.current_draft_field = FIELD_OGGETTO;
+					drawTui( &gState );
+				}
+				break;
+
+			case '\x02':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					gState.current_screen = STATE_LISTING;
+					printf( "\033[?25l" );
+					drawTui( &gState );
+				}
+				break;
+
+			case '\x09':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					gState.current_draft_field = gState.current_draft_field == FIELD_OGGETTO ? FIELD_TESTO : FIELD_OGGETTO;
+					drawTui( &gState );
+				}
+				break;
+
+			case '\x7f':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					if ( gState.current_draft_field == FIELD_OGGETTO && gState.len_oggetto > 0 )
+						gState.buf_oggetto[ --gState.len_oggetto ] = '\0';
+					else if ( gState.current_draft_field == FIELD_TESTO && gState.len_testo > 0 )
+						gState.buf_testo[ --gState.len_testo ] = '\0';
+					else break;
+					drawTui( &gState );
+				}
+				break;
+
+			case '\x18':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					if ( gState.len_testo == 0 )
+					{
+						sprintf( gState.state_label, "Messaggio vuoto!" );
+						drawTui( &gState );
+						gState.state_label[0] = '\0';
+						break;
+					}
+
+					sprintf( gState.state_label, "Invio del messaggio..." );
+					drawTui( &gState );
+
+					gState.state_label[0] = '\0';
+					msg_buf[0] = CLI_POST;
+					msg_buf[1] = strlen( user );
+					msg_buf[2] = strlen( pass );
+					strcpy( msg_buf + 3, user );
+					strcpy( msg_buf + 3 + strlen( user ), pass );
+
+					Post *newpost = malloc( POST_HEADER_SIZE + strlen( user ) + gState.len_oggetto + gState.len_testo + 1 );
+					if ( !newpost )
+					{
+						sprintf( gState.state_label, "Errore di memoria" );
+						drawTui( &gState );
+						gState.state_label[0] = '\0';
+						break;
+					}
+
+					//uint32_t id = 0x11223344;
+					//uint64_t timestamp = 0xFFFFFFFFFFFFFFFF;
+					newpost->len_mittente = strlen( user );
+					newpost->len_oggetto = gState.len_oggetto;
+					uint16_t len_testo = ( uint16_t )gState.len_testo;
+					//memcpy( &newpost->id, &id, 4 );
+					memcpy( &newpost->len_testo, &len_testo, 2 );
+					//memcpy( &newpost->timestamp, &timestamp, 8 );
+
+					strcpy( newpost->data, user );
+					strcat( newpost->data, gState.buf_oggetto );
+					strcat( newpost->data, gState.buf_testo );
+
+					size_t post_size = POST_HEADER_SIZE + newpost->len_mittente + newpost->len_oggetto + len_testo;
+					memcpy( msg_buf + 3 + strlen( user ) + strlen( pass ), newpost, post_size );
+					msg_size = 3 + strlen( user ) + strlen( pass ) + post_size;
+					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
+					free( newpost );
+
+					sprintf( gState.state_label, "Messaggio pubblicato!" );
+					drawTui( &gState );
+					gState.current_screen = STATE_LISTING;
+					printf( "\033[?25l" );
+					loadPosts( msg_buf, &msg_size, gState.loaded_page );
+					drawTui( &gState );	// lo faccio due volte perché è più bello :>
+				}
+				break;
+			
+			default:
+				if ( gState.current_screen == STATE_WRITING && action >= ' ' )
+					goto inserisci;
+				break;
+
+			inserisci:
+				if ( gState.current_draft_field == FIELD_OGGETTO && gState.len_oggetto < OGGETTO_MAXLEN )
+				{
+					gState.buf_oggetto[ gState.len_oggetto++ ] = (char)action;
+					gState.buf_oggetto[ gState.len_oggetto   ] = '\0';
+				}
+				else if ( gState.current_draft_field == FIELD_TESTO && gState.len_testo < TESTO_MAXLEN )
+				{
+					gState.buf_testo[ gState.len_testo++ ] = (char)action;
+					gState.buf_testo[ gState.len_testo   ] = '\0';
+				}
+				else break;
+				drawTui( &gState );
+				break;
 		}
 	}
 
@@ -458,32 +604,11 @@ int main( int argc, char *argv[] )
 	msg_buf[0] = CLI_POST;
 	msg_buf[1] = strlen( user );
 	msg_buf[2] = strlen( pass );
-	strcpy( msg_buf + 3, user );
-	strcpy( msg_buf + 3 + strlen( user ), pass );
 
 	const char* TEST_MITT = "Sergio";
 	const char* TEST_OGG  = "Prova";
 	const char* TEST_TEXT = "Questo e' un messaggio di prova!!!!!!!!!!!!!!!!!!!!!";
 	
-	Post *newpost = malloc( POST_HEADER_SIZE + strlen( TEST_MITT ) + strlen( TEST_OGG ) + strlen( TEST_TEXT ) );
-	uint32_t id = 0x11223344;
-	uint64_t timestamp = 0xFFFFFFFFFFFFFFFF;
-	newpost->len_mittente = strlen( TEST_MITT );
-	newpost->len_oggetto = strlen( TEST_OGG );
-	uint16_t len_testo = strlen( TEST_TEXT );
-	memcpy( &newpost->id, &id, 4 );
-	memcpy( &newpost->len_testo, &len_testo, 2 );
-	memcpy( &newpost->timestamp, &timestamp, 8 );
-
-	strcpy( newpost->data, TEST_MITT );
-	strcat( newpost->data, TEST_OGG );
-	strcat( newpost->data, TEST_TEXT );
-
-	size_t post_size = POST_HEADER_SIZE + newpost->len_mittente + newpost->len_oggetto + len_testo;
-	memcpy( msg_buf + 3 + strlen( user ) + strlen( pass ), newpost, post_size );
-	msg_size = 3 + strlen( user ) + strlen( pass ) + post_size;
-	ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
-	free( newpost );
 
 	msg_buf[0] = CLI_DELPOST;
 	msg_buf[1] = strlen( user );
@@ -498,12 +623,12 @@ int main( int argc, char *argv[] )
 	
 	return 0;
 
-	for ( int i = 0; i < 10; i++ )
-		if ( gLoadedPosts[i] )
-		{
-			free( gLoadedPosts[i] );
-			gLoadedPosts[i] = NULL;
-		}
+	//for ( int i = 0; i < 10; i++ )
+	//	if ( gLoadedPosts[i] )
+	//	{
+	//		free( gLoadedPosts[i] );
+	//		gLoadedPosts[i] = NULL;
+	//	}
 
 	return 0;
 }

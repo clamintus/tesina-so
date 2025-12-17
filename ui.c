@@ -15,6 +15,7 @@
 //struct termios term;
 struct winsize window;
 int max_posts_per_page;
+unsigned int max_post_lines;
 
 int updateWinSize()
 {
@@ -73,7 +74,9 @@ char *stringifyTimestamp( time_t timestamp )
 	return result;
 }
 
-void printWrapped( const char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1 )
+#define ANSIREV "\033[7m\033[1m"
+#define ANSIRST "\033[0m"
+unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1, unsigned int skip )
 {
 	unsigned short x_len = x1 - x0 + 1;
 	unsigned short y_len = y1 - y0 + 1;
@@ -86,7 +89,7 @@ void printWrapped( const char* str, size_t size, unsigned short x0, unsigned sho
 	char* lines[1024];
 
 	if ( x_len <= 0 || y_len <= 0 )
-		return;
+		return ( unsigned int )-1;
 
 	lines[ l++ ] = curr;
 	lines[ 1 ]   = curr + strlen( str );
@@ -175,6 +178,14 @@ endloop:
 	unsigned int start_index = 0;
 	if ( l > y_len )
 		start_index = l - y_len;
+	if ( skip != ( unsigned int )-1 )
+		start_index = skip;
+
+	// Also draw the scroll indicators
+	if ( skip != 0 && skip != ( unsigned int )-1 )
+		printf( "\033[%d;%dH" ANSIREV "[↑]" ANSIRST, y0 - 1, window.ws_col / 2 - 1 );
+	if ( l > y_len && l != y_len + skip )
+		printf( "\033[%d;%dH" ANSIREV "[↓]" ANSIRST, y1 + 1, window.ws_col / 2 - 1 );
 
 	for ( unsigned int i = 0; i < y_len && start_index + i < l; i++ )
 	{
@@ -188,31 +199,35 @@ endloop:
 
 	//printf( "\033[%d;%dH%d lines", y1 + 1, x0 + 2, l );
 
+
 	fflush( stdout );
+
+	return l;
 }
 
 
-#define ANSIREV "\033[7m\033[1m"
-#define ANSIRST "\033[0m"
 int draw_header( ClientState *state )
 {
 	char left_text[257];
 	char right_text[100];
-	const char* listing_str    = "Lista post   |   Pagina 1 di 1";
-	const char* writing_str    = "Scrivi post";
-	const char* singlepost_str = "Leggi post   |   Oggetto";
+	const char* listing_str    = "Lista post";
+	const char* writing_str    = "Nuovo post";
+	const char* singlepost_str = "Leggi post";
 
 	switch ( state->current_screen )
 	{
 		case STATE_LISTING:
 			if ( *state->board_title )
-				sprintf( left_text, "%s   |   %s", state->board_title, listing_str );		// da troncare
+				sprintf( left_text, "%s   |   %s   |   Pagina %u di %u", state->board_title, listing_str,
+				      							 state->loaded_page,
+											 state->num_posts / max_posts_per_page + 1 );  // da troncare
 			else
 				sprintf( left_text, "Bacheca Elettronica di %s   |   %s", state->server_addr, listing_str );
 			break;
 
 		case STATE_WRITING:
-			sprintf( left_text, "%s", writing_str );
+			sprintf( left_text, "%s   |   %.*s", writing_str, window.ws_col - 6 - strlen( writing_str ) - 7,
+							     state->buf_oggetto[0] == '\0' ? "(nessun oggetto)" : state->buf_oggetto );
 			break;
 
 		case STATE_SINGLEPOST:
@@ -232,22 +247,37 @@ int draw_footer( ClientState *state )
 	draw_hline( window.ws_row - 6 );
 	printf( "\033[%d;5H", window.ws_row - 4 );
 	
-	if ( state->listnav_enabled )
+	if ( state->current_screen & UI_LISTNAV )
 		printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Naviga lista\033[%d;5H", window.ws_row - 2 );
-	if ( state->pagenav_enabled )
+
+	if ( state->current_screen & UI_TEXTNAV && state->post_lines > max_post_lines )
+		printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Scorri testo\033[%d;5H", window.ws_row - 2 );
+
+	if ( state->current_screen & UI_PAGENAV && state->num_posts > max_posts_per_page )
 		printf( "%s  %s  Cambia pagina\033[%d;36H", state->loaded_page > 1 ? ANSIREV " H " ANSIRST : "   ", 
 				                            state->loaded_page < state->num_posts / max_posts_per_page + 1 ?
 							                                     ANSIREV " L " ANSIRST : "   ",
 							    window.ws_row - 4 );
-	if ( state->readpost_enabled )
+
+	if ( state->current_screen & UI_READPOST )
 		printf( "\033[%d;36H" ANSIREV " ENTER " ANSIRST "  Leggi post\033[%d;36H", window.ws_row - 4, window.ws_row - 2 );
-	if ( state->goback_enabled )
-		printf( ANSIREV " B " ANSIRST "  Torna indietro" );
-	if ( state->quit_enabled )
+
+	if ( state->current_screen & UI_WRITEPOST && state->auth_level > -1 )
+		printf( ANSIREV " W " ANSIRST "  Scrivi post" );
+	if ( state->current_screen & UI_SENDPOST )
+		printf( "\033[%d;9H" ANSIREV " ^X " ANSIRST "  Pubblica\033[%d;9H", window.ws_row - 4, window.ws_row - 2 );
+
+	if ( state->current_screen & UI_BACK )
+		printf( ANSIREV " %sB " ANSIRST "  Torna indietro", state->current_screen == STATE_WRITING ? "^" : "" );
+
+	if ( state->current_screen == STATE_WRITING )
+		printf( "\033[%d;36H" ANSIREV " <TAB> " ANSIRST "  Cambia campo", window.ws_row - 4 );
+	
+	if ( state->current_screen != STATE_WRITING )
 		printf( "\033[%d;63H" ANSIREV " Q " ANSIRST "  Disconnetti ed esci", window.ws_row - 4 );
 
-	printf( "\033[%d;1H\033[2K", window.ws_row - 1 );
-	draw_box();
+	printf( "\033[%d;1H\033[0K\033[%dG┃", window.ws_row - 1, window.ws_col );
+	//draw_box();
 	
 	if ( state->state_label[0] != '\0' )
 		printf( "\033[%d;%dH" ANSIREV " %s " ANSIRST, window.ws_row - 1, window.ws_col - strlen( state->state_label ) - 3, state->state_label );
@@ -255,12 +285,11 @@ int draw_footer( ClientState *state )
 
 int drawTui_listView( ClientState *state )
 {
-	if ( state->num_posts > max_posts_per_page ) state->pagenav_enabled = true;
-	//state->pagenav_enabled = true;
-	state->listnav_enabled = true;
-	state->readpost_enabled = state->quit_enabled = true;
-	state->goback_enabled = false;
-	//strcpy( state->state_label, "We Are Charlie Kirk" );
+	//if ( state->num_posts > max_posts_per_page ) state->pagenav_enabled = true;
+	////state->pagenav_enabled = true;
+	//state->listnav_enabled = true;
+	//state->readpost_enabled = state->quit_enabled = true;
+	//state->goback_enabled = false;
 	//strcpy( state->state_label, "Prova" );
 	//*state->state_label = '\0';
 	draw_header( state );
@@ -286,9 +315,9 @@ int drawTui_listView( ClientState *state )
 		if ( post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
 
 		printf( "\033[%d;3H", 5 + i );
-		printf( "%s %s %.*s %.*s\n\033[3GP", selected ? "*" : " ", ora_post, 
-									   post->len_mittente, post->data,
-									   oggetto_trunc_pos,  post->data + post->len_mittente );
+		printf( "%s %s %.*s %.*s", selected ? "*" : " ", ora_post, 
+								 post->len_mittente, post->data,
+								 oggetto_trunc_pos,  post->data + post->len_mittente );
 
 		//free( mittente );
 		//free( oggetto );
@@ -298,13 +327,12 @@ int drawTui_listView( ClientState *state )
 
 int drawTui_readPost( ClientState *state )
 {
-	state->pagenav_enabled  = false;
-	state->listnav_enabled  = false;
-	state->readpost_enabled = false;
-	state->goback_enabled   = true;
+	//state->pagenav_enabled  = false;
+	//state->listnav_enabled  = false;
+	//state->readpost_enabled = false;
+	//state->goback_enabled   = true;
 
 	draw_header( state );
-	draw_footer( state );
 
 	Post *curr_post = state->cached_posts[ state->selected_post ];
 
@@ -317,15 +345,56 @@ int drawTui_readPost( ClientState *state )
 									     curr_post->len_mittente, curr_post->data,
 									     curr_post->len_oggetto,  curr_post->data + curr_post->len_mittente );
 	// TODO: printa anche la data!
+	
+	//printf( "\033[7;%dHOffset: %u", 2 + padding_x, state->more_lines );
 
 	//printf( "\033[8;3H%s", curr_post->data + curr_post->len_mittente + curr_post->len_oggetto );
-	printWrapped( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto,
-		      curr_post->len_testo,
-	                          2 + padding_x,
-		                  9 + padding_y,
-		      window.ws_col - padding_x - 1,
-		      window.ws_row - padding_y - 1 );
+	state->post_lines = printWrapped( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto,
+					  curr_post->len_testo,
+					   	      2 + padding_x,
+					   	      9 + padding_y,
+					  window.ws_col - padding_x - 1,
+					  window.ws_row - padding_y - 8,
+					  state->post_offset            );
+
+	max_post_lines    = window.ws_row - 2 * padding_y - 16;
+	state->more_lines = state->post_lines - state->post_offset > max_post_lines;
+
+	draw_footer( state );
 }
+
+int drawTui_writePost( ClientState *state )
+{
+	draw_header( state );
+	draw_footer( state );
+
+	// Come prima cosa riattiviamo il cursore: deve indicare all'utente dove sta scrivendo
+	printf( "\033[5;3HOggetto: \033[?25h" );
+	
+	if ( state->current_draft_field == FIELD_TESTO )	// per lasciare il cursore sull'oggetto alla fine
+	{
+		if ( state->len_oggetto > window.ws_col - 11 - 3 )
+			printf( "...%s", state->buf_oggetto + ( state->len_oggetto - ( window.ws_col - 11 - 3 ) + 3 ) );
+		else
+			printf( "%s", state->buf_oggetto );
+	}
+
+	printWrapped( state->buf_testo,				// stringa
+		      state->len_testo,				// lunghezza
+		      3, 8,					// x0 y0
+		      window.ws_col - 2, window.ws_row - 9,	// x1 y1
+		      -1				    );  // vogliamo sempre l'ultima parte del testo
+
+	if ( state->current_draft_field == FIELD_OGGETTO )
+	{
+		if ( state->len_oggetto > window.ws_col - 11 - 3 )
+			printf( "\033[5;12H...%s", state->buf_oggetto + ( state->len_oggetto - ( window.ws_col - 11 - 3 ) + 3 ) );
+		else
+			printf( "\033[5;12H%s", state->buf_oggetto );
+	}
+}
+
+	
 	
 int drawTui( ClientState *state )
 {
@@ -343,6 +412,10 @@ int drawTui( ClientState *state )
 	else if ( state->current_screen == STATE_SINGLEPOST )
 	{
 		drawTui_readPost( state );
+	}
+	else if ( state->current_screen == STATE_WRITING )
+	{
+		drawTui_writePost( state );
 	}
 }
 
