@@ -165,7 +165,7 @@ void exitProgram( int exit_code )
 	exit( exit_code );
 }
 
-int loadPosts( char* msg_buf, size_t* msg_size, unsigned char page )
+int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
 {
 	msg_buf[0] = CLI_GETPOSTS;
 	msg_buf[1] = page;
@@ -265,7 +265,7 @@ int main( int argc, char *argv[] )
 	char 		    user[256];
 	char 		    pass[256];
 	int  		    auth_level = -1;		/* 1 amministratore, 0: utente standard, -1: anonimo */
-	char  		    msg_buf[655360];
+	unsigned char  	    msg_buf[655360];
 	size_t		    msg_size;
 	struct sockaddr_in  servaddr;
 	struct hostent     *he;
@@ -402,6 +402,8 @@ int main( int argc, char *argv[] )
 
 	updateWinSize();
 	gState.cached_posts = malloc( sizeof( char* ) * max_posts_per_page );
+	for ( int i = 0; i < max_posts_per_page; i++ )
+		gState.cached_posts[ i ] = NULL;
 
 	while (1)
 	{
@@ -501,7 +503,7 @@ int main( int argc, char *argv[] )
 					// inserisci lettera nel buffer...
 					goto inserisci;
 				}
-				else if ( gState.current_screen & UI_PAGENAV && gState.num_posts != ( unsigned int )-1 &&
+				else if ( gState.current_screen & UI_PAGENAV && gState.num_posts != 0 &&
 					  gState.loaded_page < ( gState.num_posts - 1 ) / max_posts_per_page + 1 )
 				{
 					sprintf( gState.state_label, "Caricamento dei post..." );
