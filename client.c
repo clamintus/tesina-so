@@ -205,7 +205,42 @@ int loadPosts( char* msg_buf, size_t* msg_size, unsigned char page )
 		scanptr += POST_HEADER_SIZE + post_size;
 	}
 
+	if ( gState.selected_post >= gState.loaded_posts )
+		gState.selected_post = gState.loaded_posts - 1;
+
 	return gState.loaded_posts;
+}
+
+int reauth( unsigned char* msg_buf, size_t* msg_size )
+{
+	char user[257];
+	char pass[257];
+	int len_user, len_pass;
+
+	printf( "\033[2J\033[1;1HOccorre l'autenticazione per continuare.\n\n\033[?25h" );
+	setTerminalMode( TERM_CANON );
+	
+	if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
+		return -1;
+	setTerminalMode( TERM_CANON_NOECHO );
+	if ( ( len_pass = getValidInput( pass, 256, "\033[?25lPassword: " ) ) < 0 )
+		return -1;
+	setTerminalMode( TERM_RAW );
+
+	msg_buf[0] = CLI_LOGIN;
+	msg_buf[1] = len_user;
+	msg_buf[2] = len_pass;
+	memcpy( msg_buf + 3           , user, len_user );
+	memcpy( msg_buf + 3 + len_user, pass, len_pass );
+	*msg_size = 3 + len_user + len_pass;
+
+	if ( SendAndGetResponse( s_sock, msg_buf, msg_size, SERV_WELCOME ) <= 0 )
+		return -1;
+
+	gState.auth_level = msg_buf[1];
+	strcpy( gState.user, user );
+	strcpy( gState.pass, pass );
+	return 0;
 }
 
 int main( int argc, char *argv[] )
@@ -316,10 +351,12 @@ int main( int argc, char *argv[] )
 	}
 	else
 	{
-		if ( sockReceiveAll( s_sock, msg_buf + 1, 11 ) < 0 )
+		if ( sockReceiveAll( s_sock, msg_buf + 1, 12 ) < 0 )
 			exitProgram( EXIT_FAILURE );
 		conv_u16( msg_buf + 2, TO_HOST );
 		conv_u64( msg_buf + 4, TO_HOST );
+		if ( sockReceiveAll( s_sock, msg_buf + 13, msg_buf[12] ) < 0 )
+			exitProgram( EXIT_FAILURE );
 	}
 
 	uint16_t n_posts;
@@ -365,7 +402,6 @@ int main( int argc, char *argv[] )
 				break;
 
 			case '\n':
-				// TODO: rendere possibile inserire a capo in post
 				if ( gState.current_screen == STATE_WRITING )
 				{
 					action = '\v';
@@ -450,7 +486,8 @@ int main( int argc, char *argv[] )
 					// inserisci lettera nel buffer...
 					goto inserisci;
 				}
-				else if ( gState.current_screen & UI_PAGENAV && gState.loaded_page < gState.num_posts / max_posts_per_page + 1 )
+				else if ( gState.current_screen & UI_PAGENAV && gState.num_posts != ( unsigned int )-1 &&
+					  gState.loaded_page < ( gState.num_posts - 1 ) / max_posts_per_page + 1 )
 				{
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
@@ -573,14 +610,93 @@ int main( int argc, char *argv[] )
 					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
 					free( newpost );
 
-					sprintf( gState.state_label, "Messaggio pubblicato!" );
-					drawTui( &gState );
-					gState.current_screen = STATE_LISTING;
-					printf( "\033[?25l" );
-					loadPosts( msg_buf, &msg_size, gState.loaded_page );
+					if ( ret )
+					{
+						sprintf( gState.state_label, "Post pubblicato!" );
+						drawTui( &gState );
+						gState.current_screen = STATE_LISTING;
+						printf( "\033[?25l" );
+						loadPosts( msg_buf, &msg_size, gState.loaded_page );
+					}
+					else
+						switch ( ( unsigned char )msg_buf[1] )
+						{
+							case 0x0:
+								sprintf( gState.state_label, "Non autorizzato" );
+								break;
+
+							case 0x1:
+								sprintf( gState.state_label, "Errore del server, riprova" );
+								break;
+
+							case 0xFF:
+								sprintf( gState.state_label, "Il server è pieno!" );
+								break;
+
+							default:
+								sprintf( gState.state_label, "Errore sconosciuto" );
+						}
+
 					drawTui( &gState );	// lo faccio due volte perché è più bello :>
 				}
 				break;
+
+
+			case 'd':
+			case 'D':
+				if ( gState.current_screen == STATE_WRITING )
+				{
+					goto inserisci;
+				}
+				else if ( gState.current_screen & UI_DELPOST && 1 && gState.loaded_posts > 0 &&
+					  ( gState.auth_level < 0 ||
+				     	    !strncmp( gState.cached_posts[ gState.selected_post ]->data,
+						      user,
+						      gState.cached_posts[ gState.selected_post ]->len_mittente ) ) )
+				{
+					if ( gState.auth_level < 0 && reauth( msg_buf, &msg_size ) < 0 )
+					{
+						sprintf( gState.state_label, "Credenziali errate!" );
+						drawTui( &gState );
+						break;
+					}
+					msg_buf[0] = CLI_DELPOST;
+					msg_buf[1] = ( unsigned char )strlen( user );
+					msg_buf[2] = ( unsigned char )strlen( pass );
+					strcpy( msg_buf + 3, user );
+					strcpy( msg_buf + 3 + msg_buf[1], pass );
+					memcpy( msg_buf + 3 + msg_buf[1] + msg_buf[2], &gState.cached_posts[ gState.selected_post ]->id, 4 );
+					msg_size = 3 + msg_buf[1] + msg_buf[2] + 4;
+					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
+					if ( ret )
+					{
+						sprintf( gState.state_label, "Post cancellato!" );
+						gState.current_screen = STATE_LISTING;
+						loadPosts( msg_buf, &msg_size, gState.loaded_page );
+						drawTui( &gState );
+						break;
+					}
+					else
+						switch( ( unsigned char )msg_buf[1] )
+						{
+							case 0x0:
+							case 0xFF:
+								sprintf( gState.state_label, "Post non trovato" );
+								break;
+							
+							case 0x1:
+								sprintf( gState.state_label, "Non autorizzato" );
+								break;
+
+							default:
+								sprintf( gState.state_label, "Errore sconosciuto" );
+						}
+
+					drawTui( &gState );
+					gState.state_label[0] = '\0';
+				}
+				break;
+
 			
 			default:
 				if ( gState.current_screen == STATE_WRITING && action >= ' ' )
@@ -622,16 +738,6 @@ int main( int argc, char *argv[] )
 	const char* TEST_TEXT = "Questo e' un messaggio di prova!!!!!!!!!!!!!!!!!!!!!";
 	
 
-	msg_buf[0] = CLI_DELPOST;
-	msg_buf[1] = strlen( user );
-	msg_buf[2] = strlen( pass );
-	strcpy( msg_buf + 3, user );
-	strcpy( msg_buf + 3 + msg_buf[1], pass );
-	uint32_t post_id = 0xdbc5ab84;
-	memcpy( msg_buf + 3 + msg_buf[1] + msg_buf[2], &post_id, 4 );
-	msg_size = 3 + msg_buf[1] + msg_buf[2] + 4;
-	ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
-	printf( "%d\n", ret );
 	
 	return 0;
 

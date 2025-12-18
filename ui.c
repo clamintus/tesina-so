@@ -69,7 +69,7 @@ char *stringifyTimestamp( time_t timestamp )
 	if ( post_tm.tm_year == now_tm.tm_year && post_tm.tm_mon == now_tm.tm_mon && post_tm.tm_mday == now_tm.tm_mday )
 		strftime( result, 10, "%R", &post_tm );
 	else
-		strftime( result, 10, "%m/%d", &post_tm );
+		strftime( result, 10, "%d/%m", &post_tm );
 
 	return result;
 }
@@ -222,11 +222,11 @@ int draw_header( ClientState *state )
 			if ( *state->board_title )
 				sprintf( left_text, "%s   |   %s   |   Pagina %u di %u", state->board_title, listing_str,
 				      							 state->loaded_page,
-											 state->num_posts / max_posts_per_page + 1 );  // da troncare
+											 ( state->num_posts - 1 )/ max_posts_per_page + 1 );  // da troncare
 			else
 				sprintf( left_text, "Bacheca Elettronica di %s   |   %s   |   Pagina %u di %u", state->server_addr, listing_str,
 				      										state->loaded_page,
-				      									state->num_posts / max_posts_per_page + 1 );
+				      								( state->num_posts - 1 ) / max_posts_per_page + 1 );
 			break;
 
 		case STATE_WRITING:
@@ -239,10 +239,28 @@ int draw_header( ClientState *state )
 			break;
 	}
 
-	sprintf( right_text, "Loggato come:  %s%s%s", state->auth_level > 0 ? "\033[1m" : "", state->user, state->auth_level > 0 ? ANSIRST : "" );
+	int right_text_len;
+	switch ( state->auth_level )
+	{
+		case 1:
+			sprintf( right_text, "Loggato come:  \033[1m%s" ANSIRST, state->user );
+			right_text_len = -8;
+			break;
+
+		case 0:
+			sprintf( right_text, "Loggato come:  %s", state->user );
+			right_text_len = 0;
+			break;
+
+		case -1:
+			sprintf( right_text, "Loggato come:  " ANSIITA "anonymous" ANSIRST );
+			right_text_len = -12;
+			break;
+	}
+	right_text_len += strlen( right_text );
 
 	draw_hline( 3 );
-	printf( "\033[2;4H%s\033[2;%dH%s", left_text, window.ws_col - 3 - strlen( right_text ) + ( state->auth_level ? 8 : 0 ), right_text );
+	printf( "\033[2;4H%s\033[2;%dH%s", left_text, window.ws_col - 3 - right_text_len, right_text );
 	//printf( "\033[2;4H%s", left_text );
 }
 
@@ -257,9 +275,9 @@ int draw_footer( ClientState *state )
 	if ( state->current_screen & UI_TEXTNAV && state->post_lines > max_post_lines )
 		printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Scorri testo\033[%d;5H", window.ws_row - 2 );
 
-	if ( state->current_screen & UI_PAGENAV && state->num_posts > max_posts_per_page )
+	if ( state->current_screen & UI_PAGENAV && state->num_posts > max_posts_per_page && state->num_posts != ( unsigned int ) -1 )
 		printf( "%s  %s  Cambia pagina\033[%d;36H", state->loaded_page > 1 ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
-				                            state->loaded_page < state->num_posts / max_posts_per_page + 1 ?
+				                            state->loaded_page < ( state->num_posts - 1 ) / max_posts_per_page + 1 ?
 							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST,
 							    window.ws_row - 4 );
 
@@ -272,11 +290,21 @@ int draw_footer( ClientState *state )
 		printf( "\033[%d;9H" ANSIREV " ^X " ANSIRST "  Pubblica\033[%d;9H", window.ws_row - 4, window.ws_row - 2 );
 
 	if ( state->current_screen & UI_BACK )
-		printf( ANSIREV " %sB " ANSIRST "  Torna indietro", state->current_screen == STATE_WRITING ? "^" : "" );
+		printf( ANSIREV " %sB " ANSIRST "  Torna indietro\033[%d;5H", state->current_screen == STATE_WRITING ? "^" : "",
+		     							      window.ws_row - 2 );
 
 	if ( state->current_screen == STATE_WRITING )
 		printf( "\033[%d;36H" ANSIREV " TAB " ANSIRST "  Cambia campo", window.ws_row - 4 );
 	
+	if ( state->current_screen == STATE_LISTING )
+		printf( "\033[%d;63H" ANSIREV " R " ANSIRST "  Aggiorna\033[%d;63H", window.ws_row - 4, window.ws_row - 2 );
+
+	if ( state->current_screen & UI_DELPOST && state->loaded_posts > 0 &&
+	     !strncmp( state->cached_posts[ state->selected_post ]->data,
+		       state->user,
+		       state->cached_posts[ state->selected_post ]->len_mittente ) )
+		printf( ANSIREV " D " ANSIRST "  Elimina post\033[%d;90H", window.ws_row - 2 );
+		
 	if ( state->current_screen != STATE_WRITING )
 		printf( "\033[%d;63H" ANSIREV " Q " ANSIRST "  Disconnetti ed esci", window.ws_row - 4 );
 
@@ -353,6 +381,11 @@ int drawTui_readPost( ClientState *state )
 									     curr_post->len_oggetto ? curr_post->data + curr_post->len_mittente :
 									     			      ANSIITA "(nessun oggetto)" ANSIRST );
 	// TODO: printa anche la data!
+	char data_buf[20];
+	uint64_t time_buf;
+	memcpy( &time_buf, &curr_post->timestamp, 8 );
+	strftime( data_buf, 20, "%d/%m/%Y %H:%M:%S", localtime( ( time_t *)&time_buf ) );
+	printf( "\033[7;%dHPostato il: %s", 2 + padding_x, data_buf );
 	
 	//printf( "\033[7;%dHOffset: %u", 2 + padding_x, state->more_lines );
 

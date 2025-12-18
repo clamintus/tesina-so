@@ -11,6 +11,7 @@
 #include <arpa/inet.h>
 #include <endian.h>
 #include <pthread.h>
+#include <signal.h>
 #include "types.h"
 #include "helpers.h"
 
@@ -109,10 +110,14 @@ int loadDatabase( void )
 {
 	FILE* fp;
 	char* endptr;
-	char id_buf[9];
-	char mittente[256];
-	char oggetto[256];
-	char testo[64001];
+	//char id_buf[9];
+	//char mittente[256];
+	//char oggetto[256];
+	//char testo[64001];
+	char* id_buf;
+	char* mittente;
+	char* oggetto;
+	char* testo;
 	unsigned long len_mittente;
 	unsigned long len_oggetto;
 	unsigned long len_testo;
@@ -130,8 +135,28 @@ int loadDatabase( void )
 
 	while ( fgets( buffer, BUF_SIZE, fp ) )
 	{
-		if ( sscanf( buffer, "%[^\x1f]\x1f%lld\x1f%[^\x1f]\x1f%[^\x1f]\x1f%[^\n]", id_buf, &timestamp, mittente, oggetto, testo ) < 5 )
-			continue;
+		//if ( sscanf( buffer, "%[^\x1f]\x1f%lld\x1f%[^\x1f]\x1f%[^\x1f]\x1f%[^\n]", id_buf, &timestamp, mittente, oggetto, testo ) < 5 )
+		//	continue;
+		const char* RS = "\n";
+		const char* FS = "\x1f";
+		char* curr_field;
+		char* buffer2 = buffer;
+
+		curr_field = strsep( &buffer2, FS );
+		if ( !buffer2 ) continue;
+		id_buf = curr_field;
+		curr_field = strsep( &buffer2, FS );
+		if ( !buffer2 ) continue;
+		timestamp = atoll( curr_field );
+		curr_field = strsep( &buffer2, FS );
+		if ( !buffer2 ) continue;
+		mittente = curr_field;
+		curr_field = strsep( &buffer2, FS );
+		if ( !buffer2 ) continue;
+		oggetto = curr_field;
+		curr_field = strsep( &buffer2, RS );
+		if ( !buffer2 ) testo = "";
+		testo = curr_field;
 
 		len_mittente = strlen( mittente );
 		len_oggetto = strlen( oggetto );
@@ -305,6 +330,14 @@ void deinitAndErr( int eval, const char* fmt )
 	unloadDatabase();
 	unloadUsers();
 	err( eval, fmt );
+}
+
+void deinitAndExit( void )
+{
+	unloadDatabase();
+	unloadUsers();
+	printf( "server: Server terminato correttamente.\n" );
+	exit( EXIT_SUCCESS );
 }
 
 void closeSocket( int sockfd )
@@ -602,7 +635,7 @@ void* clientSession( void* arg )
 				if ( tryLogin( client_user, client_pass ) < 1 )
 				{
 					msg_buf[0] = SERV_NOT_OK;
-					msg_buf[1] = 0;
+					msg_buf[1] = 0x1;
 					break;
 				}
 
@@ -645,12 +678,42 @@ void* clientSession( void* arg )
 				msg_size = 1;
 				break;
 
+			case CLI_LOGIN:
+				memcpy( client_user, msg_buf + 3             , msg_buf[1] );
+				memcpy( client_pass, msg_buf + 3 + msg_buf[1], msg_buf[2] );
+				client_user[ msg_buf[1] ] = '\0';
+				client_pass[ msg_buf[2] ] = '\0';
+				
+				if ( ( user_auth_level = tryLogin( client_user, client_pass ) ) < 0 )
+				{
+					/* Autenticazione fallita, rispondi con SERV_NOT_OK */
+					msg_buf[0] = SERV_NOT_OK;
+					msg_size = 2;
+					break;
+				}
+
+				uint16_t post_count = gPostCount;
+				msg_buf[0] = SERV_WELCOME;
+				msg_buf[1] = ( unsigned char )user_auth_level;
+				// Possiamo lasciare anche garbage, tanto il client non li leggerà
+				//memcpy( msg_buf + 2, &gPostCount, 2 );
+				//int64_t local_time = ( int64_t )time( NULL );
+				//memcpy( msg_buf + 4, &local_time, 8 );
+				msg_buf[12] = 0;
+				msg_size = 13;
+				break;
+
 			default:
 				break;
 
 		}
 	}
 
+}
+
+void term_handler( int sig )
+{
+	deinitAndExit();
 }
 
 int main( int argc, char *argv[] )
@@ -660,6 +723,10 @@ int main( int argc, char *argv[] )
 	struct sockaddr_in serv_addr;
 	struct sockaddr_in client_addr;
 	int sin_size;
+
+	signal( SIGPIPE, SIG_IGN );
+	signal( SIGINT, term_handler );
+	signal( SIGTERM, term_handler );
 
 	if ( loadConfig() < 0 )
 	{
