@@ -201,7 +201,7 @@ int loadPosts( char* msg_buf, size_t* msg_size, unsigned char page )
 		}
 
 		unsigned char last_available_page = ( gState.num_posts - 1 ) / max_posts_per_page + 1;
-		gState.selected_post = gState.num_posts % max_posts_per_page;
+		gState.selected_post = ( gState.num_posts - 1 ) % max_posts_per_page;
 		return loadPosts( msg_buf, msg_size, last_available_page );
 	}
 
