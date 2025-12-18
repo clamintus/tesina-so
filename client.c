@@ -174,8 +174,8 @@ int loadPosts( char* msg_buf, size_t* msg_size, unsigned char page )
 
 	int ret = SendAndGetResponse( s_sock, msg_buf, msg_size, SERV_ENTRIES );
 
-	if ( msg_buf[3] == 0 )
-		return 0;
+	//if ( msg_buf[3] == 0 )
+	//	return 0;
 
 	// Post parsing
 	uint16_t       n_posts;
@@ -184,12 +184,27 @@ int loadPosts( char* msg_buf, size_t* msg_size, unsigned char page )
 	gState.num_posts    = n_posts;
 	gState.loaded_page  = page;
 	gState.loaded_posts = msg_buf[3];
+
 	for ( int i = 0; i < max_posts_per_page; i++ )
 		if ( gState.cached_posts[ i ] )
 		{
 			free( gState.cached_posts[ i ] );
 			gState.cached_posts[ i ] = NULL;
 		}
+
+	if ( gState.loaded_posts == 0 && page > 1 )
+	{
+		if ( gState.num_posts == 0 )
+		{
+			gState.loaded_page = 1;
+			return 0;
+		}
+
+		unsigned char last_available_page = ( gState.num_posts - 1 ) / max_posts_per_page + 1;
+		gState.selected_post = gState.num_posts % max_posts_per_page;
+		return loadPosts( msg_buf, msg_size, last_available_page );
+	}
+
 	
 	for ( int i = 0; i < gState.loaded_posts; i++ )
 	{
@@ -415,7 +430,7 @@ int main( int argc, char *argv[] )
 					gState.current_screen = STATE_LISTING;
 					drawTui( &gState );
 				}
-				else if ( gState.current_screen & UI_READPOST )
+				else if ( gState.current_screen & UI_READPOST && gState.selected_post < gState.loaded_posts )
 				{
 					gState.current_screen = STATE_SINGLEPOST;
 					gState.post_offset = 0;
@@ -572,6 +587,21 @@ int main( int argc, char *argv[] )
 						break;
 					}
 
+					if ( gState.auth_level < 0 )
+					{
+						int reauth_ret = reauth( msg_buf, &msg_size );
+						if ( reauth_ret == -1 )
+						{
+							sprintf( gState.state_label, "Credenziali errate!" );
+							drawTui( &gState );
+							gState.state_label[0] = '\0';
+							break;
+						}
+						else if ( reauth_ret == -2 )
+							goto writepost_unauthorized;
+					}
+						
+
 					sprintf( gState.state_label, "Invio del messaggio..." );
 					drawTui( &gState );
 
@@ -622,6 +652,7 @@ int main( int argc, char *argv[] )
 						switch ( ( unsigned char )msg_buf[1] )
 						{
 							case 0x0:
+							      writepost_unauthorized:
 								sprintf( gState.state_label, "Non autorizzato" );
 								break;
 
