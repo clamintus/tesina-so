@@ -14,6 +14,7 @@
 #include <signal.h>
 #include "types.h"
 #include "helpers.h"
+#include <sys/sem.h>
 
 const char* CONFIG_PATH   = "serverconf";
 const char* DATABASE_PATH = "msgdb";
@@ -30,6 +31,7 @@ struct session_data {
 } sessions[ MAXCONNS ] = { 0 };
 
 char buffer[BUF_SIZE];
+int  semfd;
 
 int  gAllowGuests = 0;
 int  gPort = 3010;
@@ -329,16 +331,41 @@ void deinitAndErr( int eval, const char* fmt )
 {
 	unloadDatabase();
 	unloadUsers();
-	err( eval, fmt );
+	warn( fmt );
+	if ( semctl( semfd, 0, IPC_RMID ) < 0 )
+		err( eval, "server: Impossibile eliminare il semaforo" );
+	exit( eval );
 }
 
 void deinitAndExit( void )
 {
 	unloadDatabase();
 	unloadUsers();
+	if ( semctl( semfd, 0, IPC_RMID ) < 0 )
+		warn( "server: Impossibile eliminare il semaforo" );
 	printf( "server: Server terminato correttamente.\n" );
 	exit( EXIT_SUCCESS );
 }
+
+void _semaction( int val )
+{
+	struct sembuf sem_action;
+
+	sem_action.sem_num = 0;
+	sem_action.sem_op  = val;
+	sem_action.sem_flg = 0;
+
+retry_semaction:
+	if ( semop( semfd, &sem_action, 1 ) < 0 )
+	{
+		if ( errno == EINTR )
+			goto retry_semaction;
+		deinitAndErr( EXIT_FAILURE, "server: Impossibile bloccare il semaforo, arresto forzato" );
+	}
+}
+
+#define semlock() _semaction(-1)
+#define semunlock() _semaction(1);
 
 void closeSocket( int sockfd )
 {
@@ -488,6 +515,7 @@ void* clientSession( void* arg )
 			if ( ret < 0 )
 			{
 				closeSocket( session->sockfd );
+				session->tid = 0;
 				return NULL;
 			}
 			else if ( ret )
@@ -495,6 +523,7 @@ void* clientSession( void* arg )
 				fprintf( stderr, "server (#%lu): Ricevuto campo inaspettato (%#08b diverso da LOGIN). Chiudo la connessione.\n",
 						(unsigned long)session->tid, *msg_buf );
 				closeSocket( session->sockfd );
+				session->tid = 0;
 				return NULL;
 			}
 			
@@ -513,7 +542,9 @@ void* clientSession( void* arg )
 		}
 	}
 
+	semlock();
 	uint16_t post_count = gPostCount;
+	semunlock();
 	msg_buf[0] = SERV_WELCOME;
 	msg_buf[1] = ( unsigned char )user_auth_level;
 	memcpy( msg_buf + 2, &post_count, 2 );
@@ -532,6 +563,7 @@ void* clientSession( void* arg )
 		{
 			printf( "server: Sessione di %s terminata\n", inet_ntoa( session->client_addr ) );
 			closeSocket( session->sockfd );
+			session->tid = 0;
 			return NULL;
 		}
 
@@ -543,10 +575,14 @@ void* clientSession( void* arg )
 				uint8_t	       count   = 0;
 				unsigned char* scanptr = msg_buf + 4;
 
+				semlock();
 				for ( unsigned int i = (page - 1) * limit; i < page * limit; i++ )
 				{
 					if ( i >= gPostCount )
+					{
+						semunlock();
 						break;
+					}
 
 					Post *curr_post = gPosts[i];
 
@@ -563,15 +599,18 @@ void* clientSession( void* arg )
 				memcpy( msg_buf + 1, &gPostCount, 2 );
 				msg_buf[3] = count;
 				msg_size = scanptr - msg_buf;
+				semunlock();
 				break;
 
 			case CLI_POST:
 				msg_size = 2;
 
+				semlock();
 				if ( gPostCount == 2048 )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0xFF;
+					semunlock();
 					break;
 				}
 
@@ -583,6 +622,7 @@ void* clientSession( void* arg )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0;
+					semunlock();
 					break;
 				}
 
@@ -596,6 +636,7 @@ void* clientSession( void* arg )
 					/* Out of memory! */
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0x01;
+					semunlock();
 					break;
 				}
 				Post *new_post = gPosts[ gPostCount++ ];
@@ -621,6 +662,7 @@ void* clientSession( void* arg )
 				if ( storeDatabase() < 0 )
 					printf( "server: Impossibile aggiornare il database dei messaggi\n" );
 
+				semunlock();
 				msg_buf[0] = SERV_OK;
 				msg_size = 1;
 				break;
@@ -648,6 +690,7 @@ void* clientSession( void* arg )
 					break;
 				}
 
+				semlock();
 				int post_index = -1;
 				for ( int i = 0; i < gPostCount; i++ )
 				{
@@ -659,6 +702,7 @@ void* clientSession( void* arg )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0xFF;
+					semunlock();
 					break;
 				}
 
@@ -666,6 +710,7 @@ void* clientSession( void* arg )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0x1;
+					semunlock();
 					break;
 				}
 
@@ -676,6 +721,7 @@ void* clientSession( void* arg )
 
 				msg_buf[0] = SERV_OK;
 				msg_size = 1;
+				semunlock();
 				break;
 
 			case CLI_LOGIN:
@@ -692,7 +738,7 @@ void* clientSession( void* arg )
 					break;
 				}
 
-				uint16_t post_count = gPostCount;
+				uint16_t post_count = gPostCount;	// qui non locko perché tanto è inutile
 				msg_buf[0] = SERV_WELCOME;
 				msg_buf[1] = ( unsigned char )user_auth_level;
 				// Possiamo lasciare anche garbage, tanto il client non li leggerà
@@ -727,6 +773,12 @@ int main( int argc, char *argv[] )
 	signal( SIGPIPE, SIG_IGN );
 	signal( SIGINT, term_handler );
 	signal( SIGTERM, term_handler );
+
+	if ( ( semfd = semget( IPC_PRIVATE, 2, 0666 ) ) < 0 )
+		err( EXIT_FAILURE, "Impossibile ottenere il semaforo" );
+
+	if ( semctl( semfd, 0, SETVAL, 1 ) < 0 )
+		err( EXIT_FAILURE, "Impossibile inizializzare il semaforo" );
 
 	if ( loadConfig() < 0 )
 	{
