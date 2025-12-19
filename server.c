@@ -14,7 +14,9 @@
 #include <signal.h>
 #include "types.h"
 #include "helpers.h"
-#include <sys/sem.h>
+#ifndef POSIX_MUTEX
+ #include <sys/sem.h>
+#endif
 
 const char* CONFIG_PATH   = "serverconf";
 const char* DATABASE_PATH = "msgdb";
@@ -31,7 +33,11 @@ struct session_data {
 } sessions[ MAXCONNS ] = { 0 };
 
 char buffer[BUF_SIZE];
-int  semfd;
+#ifdef POSIX_MUTEX
+pthread_mutex_t mutex;
+#else
+int semfd;
+#endif
 
 int  gAllowGuests = 0;
 int  gPort = 3010;
@@ -42,6 +48,17 @@ int gPostCount = 0;
 char *gUsers[256][2];
 int gUserCount = 0;
 int is_admin[256];
+
+volatile sig_atomic_t gShutdown = 0;
+
+#ifdef POSIX_MUTEX
+ #define semlock() pthread_mutex_lock( &mutex )
+ #define semunlock() pthread_mutex_unlock( &mutex )
+#else
+ void _semaction( int );
+ #define semlock() _semaction(-1)
+ #define semunlock() _semaction(1)
+#endif
 
 int loadConfig( void )
 {
@@ -329,24 +346,42 @@ int tryLogin( const char* user, const char* pass )
 
 void deinitAndErr( int eval, const char* fmt )
 {
+	semlock();
 	unloadDatabase();
 	unloadUsers();
+	semunlock();
 	warn( fmt );
+#ifdef POSIX_MUTEX
+	while ( pthread_mutex_destroy( &mutex ) );
+#else	
 	if ( semctl( semfd, 0, IPC_RMID ) < 0 )
 		err( eval, "server: Impossibile eliminare il semaforo" );
+#endif
 	exit( eval );
 }
 
 void deinitAndExit( void )
 {
+	semlock();
 	unloadDatabase();
 	unloadUsers();
+	semunlock();
+#ifdef POSIX_MUTEX
+	if ( pthread_mutex_destroy( &mutex ) )
+	{
+		fprintf( stderr, "server: ATTENZIONE: Non sono riuscito a eliminare il mutex perché un thread lo sta tenendo ancora bloccato. Non dovrebbero esserci altri thread attivi a questo punto!" );
+		// Evita di perdere dati preferendo un deadlock con CPU al 100%. Questo è chiaramente uno scenario catastrofico
+		while ( pthread_mutex_destroy( &mutex ) );
+	}
+#else
 	if ( semctl( semfd, 0, IPC_RMID ) < 0 )
 		warn( "server: Impossibile eliminare il semaforo" );
+#endif
 	printf( "server: Server terminato correttamente.\n" );
 	exit( EXIT_SUCCESS );
 }
 
+#ifndef POSIX_MUTEX
 void _semaction( int val )
 {
 	struct sembuf sem_action;
@@ -363,9 +398,7 @@ retry_semaction:
 		deinitAndErr( EXIT_FAILURE, "server: Impossibile bloccare il semaforo, arresto forzato" );
 	}
 }
-
-#define semlock() _semaction(-1)
-#define semunlock() _semaction(1);
+#endif
 
 void closeSocket( int sockfd )
 {
@@ -494,12 +527,15 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 void* clientSession( void* arg )
 {
 	struct session_data *session = ( struct session_data *)arg;
+	sigset_t            sigset;
 	unsigned char	    client_user[256];
 	unsigned char	    client_pass[256];
 	int 		    user_auth_level = -1;
 	unsigned char 	    msg_buf[655360];
 	size_t 		    msg_size;
 
+	sigfillset( &sigset );
+	pthread_sigmask( SIG_BLOCK, &sigset, NULL );
 	printf( "server: Spawnato un nuovo thread per gestire la connessione in entrata di %s\n", inet_ntoa( session->client_addr ) );
 
 	if ( !gAllowGuests )
@@ -576,24 +612,27 @@ void* clientSession( void* arg )
 				unsigned char* scanptr = msg_buf + 4;
 
 				semlock();
-				for ( unsigned int i = (page - 1) * limit; i < page * limit; i++ )
-				{
-					if ( i >= gPostCount )
+				//for ( unsigned int i = (page - 1) * limit; i < page * limit; i++ )
+				if ( page > 0 )
+					for ( int i = gPostCount - 1 - limit * (page - 1); i >= gPostCount - limit * page; i-- )
 					{
-						semunlock();
-						break;
+						//if ( i >= gPostCount )
+						if ( i < 0 )
+						{
+							//semunlock();
+							break;
+						}
+
+						Post *curr_post = gPosts[i];
+
+						uint16_t len_testo;
+						memcpy( &len_testo, &curr_post->len_testo, 2 );
+						size_t post_size = curr_post->len_mittente + curr_post->len_oggetto + len_testo;
+
+						memcpy( scanptr, curr_post, POST_HEADER_SIZE + post_size );
+						scanptr += POST_HEADER_SIZE + post_size;
+						count++;
 					}
-
-					Post *curr_post = gPosts[i];
-
-					uint16_t len_testo;
-					memcpy( &len_testo, &curr_post->len_testo, 2 );
-					size_t post_size = curr_post->len_mittente + curr_post->len_oggetto + len_testo;
-
-					memcpy( scanptr, curr_post, POST_HEADER_SIZE + post_size );
-					scanptr += POST_HEADER_SIZE + post_size;
-					count++;
-				}
 
 				msg_buf[0] = SERV_ENTRIES;
 				memcpy( msg_buf + 1, &gPostCount, 2 );
@@ -759,7 +798,7 @@ void* clientSession( void* arg )
 
 void term_handler( int sig )
 {
-	deinitAndExit();
+	gShutdown = 1;
 }
 
 int main( int argc, char *argv[] )
@@ -768,17 +807,25 @@ int main( int argc, char *argv[] )
 	int s_client;
 	struct sockaddr_in serv_addr;
 	struct sockaddr_in client_addr;
+	struct sigaction   sa  = { 0 };
+	struct sigaction   sa2 = { 0 };
 	int sin_size;
 
-	signal( SIGPIPE, SIG_IGN );
-	signal( SIGINT, term_handler );
-	signal( SIGTERM, term_handler );
+	sa.sa_handler  = term_handler;
+	sa2.sa_handler = SIG_IGN;
+	sigaction( SIGPIPE, &sa2, NULL );
+	sigaction( SIGINT,  &sa,  NULL );
+	sigaction( SIGTERM, &sa2, NULL );
 
+#ifdef POSIX_MUTEX
+	pthread_mutex_init( &mutex, NULL );
+#else
 	if ( ( semfd = semget( IPC_PRIVATE, 2, 0666 ) ) < 0 )
 		err( EXIT_FAILURE, "Impossibile ottenere il semaforo" );
 
 	if ( semctl( semfd, 0, SETVAL, 1 ) < 0 )
 		err( EXIT_FAILURE, "Impossibile inizializzare il semaforo" );
+#endif
 
 	if ( loadConfig() < 0 )
 	{
@@ -833,12 +880,17 @@ int main( int argc, char *argv[] )
 	printf( "server: In ascolto sulla porta %d\n", gPort );
 
 	sin_size = sizeof( client_addr );
-	while ( s_client = accept( s_list, ( struct sockaddr *)&client_addr, &sin_size ) )
+	while (1)
 	{
-		if ( s_client < 0 ) 
+		if ( ( s_client = accept( s_list, ( struct sockaddr *)&client_addr, &sin_size ) ) < 0 )
 		{
 			if ( errno != EINTR )
 				warn( "server: Impossibile accettare una connessione in entrata" );
+
+			// Interrotto da SIGINT/SIGTERM per arrestare il server? Controlliamo
+			if ( gShutdown )
+				break;
+
 			continue;
 		}
 
@@ -869,6 +921,23 @@ int main( int argc, char *argv[] )
 		}
 
 	}
+
+	for ( int i = 0; i < MAXCONNS; i++ )
+		if ( sessions[ i ].tid )
+		{
+#ifdef DEBUG
+			printf( "server: Terminando la sessione #%d (%s)...\n", i, inet_ntoa( sessions[ i ].client_addr ) );
+#endif
+			if ( shutdown( sessions[ i ].sockfd, SHUT_RD ) == -1 )
+				warn( "server: Impossibile arrestare la socket della sessione #%d (%s) durante lo spegnimento", i, inet_ntoa( sessions[ i ].client_addr ) );
+		}
+	
+	for ( int i = 0; i < MAXCONNS; i++ )
+		if ( sessions[ i ].tid )
+			pthread_join( sessions[ i ].tid, NULL );
+
+	closeSocket( s_list );
+	deinitAndExit();
 }
 
 void test( void )

@@ -8,6 +8,16 @@ else
 	CFLAGS += -g
 endif
 
+ifdef ANDROID__BUILD_VERSION_SDK
+	CFLAGS += -DPOSIX_MUTEX
+else ifdef POSIX_MUTEX
+	CFLAGS += -DPOSIX_MUTEX
+endif
+
+ifdef DEBUG
+	CFLAGS += -DDEBUG
+endif
+
 client: client.o helpers.o ui.o
 	gcc -o client client.o helpers.o ui.o
 
