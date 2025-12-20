@@ -726,6 +726,14 @@ void* clientSession( void* arg )
 				memcpy( (char*)new_post  + POST_HEADER_SIZE + userlen                 + sent_post->len_oggetto,
 					(char*)sent_post + POST_HEADER_SIZE + sent_post->len_mittente + sent_post->len_oggetto, len_testo );
 
+				// Sanitizziamo per neutralizzare silenziosamente eventuali attacchi (injection)
+				for ( size_t i = userlen; i < ( uint16_t )sent_post->len_oggetto + len_testo; i++ )
+				{
+					if ( new_post->data[ userlen + i ] == '\x1f' ||
+					     new_post->data[ userlen + i ] == '\n'   )
+						new_post->data[ userlen + i ] = ' ';
+				}
+
 				printf( "server: Nuovo messaggio pubblicato da %s\n", inet_ntoa( session->client_addr ) );
 				if ( storeDatabase() < 0 )
 					printf( "server: Impossibile aggiornare il database dei messaggi\n" );
@@ -899,6 +907,10 @@ int main( int argc, char *argv[] )
 	if ( ( s_list = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 		deinitAndErr( EXIT_FAILURE, "server: Errore nella creazione della socket" );
 
+	int reuse = 1;
+	if ( setsockopt( s_list, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof( reuse ) ) == -1 )
+		warn( "server: Impossibile impostare il riutilizzo della socket di ascolto" );
+
 	bzero( &serv_addr, sizeof( serv_addr ) );
 	serv_addr.sin_family      = AF_INET;
 	serv_addr.sin_port        = htons( ( short int )gPort );
@@ -925,6 +937,12 @@ int main( int argc, char *argv[] )
 
 			continue;
 		}
+
+		struct timeval timeout;
+		timeout.tv_sec  = 60 * 5;
+		timeout.tv_usec = 0;
+		if ( setsockopt( s_client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof( struct timeval ) ) == -1 )
+			warn( "server: Impossibile impostare il timeout per la sessione di %s, rischio deadlock! Motivo", inet_ntoa( client_addr.sin_addr ) );
 
 		sessions_lock();
 		int slot = -1;
