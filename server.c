@@ -468,14 +468,16 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 			return -1;
 	}
 
-	while ( ( *len = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
+	ssize_t rc;
+
+	while ( ( rc = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
 	{
 		if ( errno != EINTR )
 			return -1;
 	}
+	*len += rc;
 
 	size_t 	n_to_receive;
-	ssize_t rc;
 
 	/* Receive and decode */
 	switch ( *msg_buf )
