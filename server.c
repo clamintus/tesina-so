@@ -727,7 +727,7 @@ void* clientSession( void* arg )
 					(char*)sent_post + POST_HEADER_SIZE + sent_post->len_mittente + sent_post->len_oggetto, len_testo );
 
 				// Sanitizziamo per neutralizzare silenziosamente eventuali attacchi (injection)
-				for ( size_t i = userlen; i < ( uint16_t )sent_post->len_oggetto + len_testo; i++ )
+				for ( size_t i = 0; i < ( uint16_t )sent_post->len_oggetto + len_testo; i++ )
 				{
 					if ( new_post->data[ userlen + i ] == '\x1f' ||
 					     new_post->data[ userlen + i ] == '\n'   )
