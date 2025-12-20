@@ -802,6 +802,7 @@ void* clientSession( void* arg )
 				loadDatabase();
 				database_unlock();
 
+				notifyAllClientsExcept( session );
 				msg_buf[0] = SERV_OK;
 				msg_size = 1;
 				break;
