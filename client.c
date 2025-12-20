@@ -446,8 +446,22 @@ int main( int argc, char *argv[] )
 		{
 oob:
 			// handle OOB message...
+			//printf( "\a" );
+			unsigned int old_posts = gState.num_posts;
+
+			if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
+			{
+				gState.current_screen = STATE_ERROR;
+				drawError( "Connessione col server persa." );
+				while ( getchar() != '\n' );
+				exitProgram( EXIT_FAILURE );
+			}
+
+			if ( gState.num_posts > old_posts )
+				sprintf( gState.state_label, "Nuovi post disponibili!" );
+			drawTui( &gState );
+
 			gNewDataAvailable = 0;
-			printf( "\a" );
 		}
 
 		int action = getchar();
