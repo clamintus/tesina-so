@@ -13,6 +13,7 @@
 #include <termios.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <sys/ioctl.h>
 #include "types.h"
 #include "helpers.h"
 #include "ui.h"
@@ -26,6 +27,7 @@ volatile sig_atomic_t gNewDataAvailable = 0;
 #define TESTO_MAXLEN 60000
 
 extern int max_posts_per_page;
+extern struct winsize window;
 
 /*
  *  CLIENT:
@@ -246,6 +248,7 @@ int reauth( unsigned char* msg_buf, size_t* msg_size )
 	int ret;
 
 	printf( "\033[2J\033[1;1HOccorre l'autenticazione per continuare.\n\n\033[?25h" );
+	fflush( stdout );
 	setTerminalMode( TERM_CANON );
 	
 	if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
@@ -301,6 +304,22 @@ int main( int argc, char *argv[] )
 	}
 
 
+	/* Impostazione buffer I/O e grafica */
+
+	char *fb;
+	if ( updateWinSize() )
+		err( EXIT_FAILURE, "client: Impossibile ottenere le dimensioni della finestra" );
+	fb = malloc( window.ws_row * window.ws_col );
+	if ( fb == NULL )
+		err( EXIT_FAILURE, "client: Impossibile allocare memoria per il framebuffer" );
+
+	fflush( stdout );
+	if ( setvbuf( stdin, NULL, _IONBF, 0 ) )
+		warn( "client: Impossibile impostare l'input non bufferizzato" );
+	if ( setvbuf( stdout, fb, _IOFBF, window.ws_row * window.ws_col ) )
+		warn( "client: Impossibile impostare l'output bufferizzato" );
+
+
 	/* Risoluzione del nome host (se necessaria) */
 
 	bzero( &servaddr, sizeof( servaddr ) );
@@ -318,6 +337,7 @@ int main( int argc, char *argv[] )
 
 		servaddr.sin_addr = *( struct in_addr *)he->h_addr_list[0];
 		printf( "%s\n", inet_ntoa( servaddr.sin_addr ) );
+		fflush( stdout );
 	}
 
 
@@ -330,9 +350,13 @@ int main( int argc, char *argv[] )
 	servaddr.sin_port   = htons( (unsigned short int)s_port );
 
 	printf( "Connessione a %s:%d...\n", inet_ntoa( servaddr.sin_addr ), s_port );
+	fflush( stdout );
 
 	if ( connect( s_sock, (struct sockaddr *)&servaddr, sizeof( servaddr ) ) < 0 )
 		err( EXIT_FAILURE, "client: impossibile connettersi al server" );
+
+
+	/* Impostazioni socket */
 
 	struct timeval timeout;
 	timeout.tv_sec  = 10;
@@ -349,6 +373,7 @@ int main( int argc, char *argv[] )
 #ifdef DEBUG
 	printf( "Connessione stabilita.\n\n" );
 	printf( "Indirizzo: %s\tPorta: %d\n", s_addr, s_port );
+	fflush( stdout );
 #endif
 
 	int ret;
@@ -365,6 +390,7 @@ int main( int argc, char *argv[] )
 	{
 		setTerminalMode( TERM_CANON );
 		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", argv[1] );
+		fflush( stdout );
 
 		while (1)
 		{
@@ -397,6 +423,7 @@ int main( int argc, char *argv[] )
 			}
 
 			printf( "\nCredenziali errate, riprova.\n" );
+			fflush( stdout );
 		}
 	}
 	else
@@ -418,6 +445,7 @@ int main( int argc, char *argv[] )
 
 	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %lld\n", argv[1], board_title, n_posts, server_time );
 	printf( "\nInvio) Leggi i post\n    q) Esci\n\n" );
+	fflush( stdout );
 
 	setTerminalMode( TERM_RAW );
 
@@ -435,7 +463,6 @@ int main( int argc, char *argv[] )
 
 	//gState.quit_enabled = true;
 
-	updateWinSize();
 	gState.cached_posts = malloc( sizeof( char* ) * max_posts_per_page );
 	for ( int i = 0; i < max_posts_per_page; i++ )
 		gState.cached_posts[ i ] = NULL;
@@ -464,10 +491,29 @@ oob:
 			gNewDataAvailable = 0;
 		}
 
+		//stdio mi ignora i segnali, sono costretto a fare così
+		fd_set fdset;
+		FD_ZERO( &fdset );
+		FD_SET( STDIN_FILENO, &fdset );
+
+		if ( select( STDIN_FILENO+1, &fdset, NULL, NULL, NULL ) == -1 )
+		{
+			if ( errno == EINTR )
+			{
+				// Potremmo essere stati svegliati da SIGURG
+				if ( gNewDataAvailable )
+					goto oob;
+				continue;
+			}
+
+			warn( "Errore nella select()" );
+		}
+					
+		// La select() ha ritornato, getchar() è garantita non bloccante ora perché abbiamo i dati in input
 		int action = getchar();
 
-		if ( action == EOF && gNewDataAvailable )
-			goto oob;
+		//if ( action == EOF && gNewDataAvailable )
+		//	goto oob;
 
 		switch ( action )
 		{

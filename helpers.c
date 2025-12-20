@@ -49,6 +49,7 @@ int getValidInput( char* dest, int max_size, const char* prompt )
 	while (1)
 	{
 		printf( prompt );
+		fflush( stdout );
 		dest[ max_size - 2 ] = '\0';
 		char* ret = fgets( dest, max_size, stdin );
 		if ( ret == NULL )
@@ -57,6 +58,7 @@ int getValidInput( char* dest, int max_size, const char* prompt )
 		{
 			while( strlen( fgets( dest, max_size, stdin ) ) == max_size - 1 );
 			puts( "Errore: Stringa di input troppo lunga, riprovare." );
+			fflush( stdout );
 		}
 		else if ( dest[0] != '\n' )
 			break;

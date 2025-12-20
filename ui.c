@@ -202,7 +202,7 @@ endloop:
 	//printf( "\033[%d;%dH%d lines", y1 + 1, x0 + 2, l );
 
 
-	fflush( stdout );
+	//fflush( stdout );
 
 	return l;
 }
@@ -465,11 +465,15 @@ int drawTui( ClientState *state )
 	{
 		drawTui_writePost( state );
 	}
+
+	fflush( stdout );
 }
 
 int drawError( char *error_msg )
 {
 	printf( "\033[2J\033[H%s", error_msg );
+	
+	fflush( stdout );
 }
 
 

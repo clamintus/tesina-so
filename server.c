@@ -538,7 +538,12 @@ inline static void notifyAllClientsExcept( struct session_data *sender )
 		if ( &sessions[ i ] == sender )
 			continue;
 		if ( sessions[ i ].tid )
+		{
 			targets[ count++ ] = sessions[ i ].sockfd;
+#ifdef DEBUG
+			printf( "Inviando segnale OOB a %s...\n", inet_ntoa( sessions[ i ].client_addr ) );
+#endif
+		}
 	}
 	sessions_unlock();
 
