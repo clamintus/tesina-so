@@ -34,7 +34,7 @@ struct session_data {
 
 char buffer[BUF_SIZE];
 #ifdef POSIX_MUTEX
-pthread_mutex_t mutex;
+pthread_mutex_t mutexes[2];
 #else
 int semfd;
 #endif
@@ -51,14 +51,11 @@ int is_admin[256];
 
 volatile sig_atomic_t gShutdown = 0;
 
-#ifdef POSIX_MUTEX
- #define semlock() pthread_mutex_lock( &mutex )
- #define semunlock() pthread_mutex_unlock( &mutex )
-#else
- void _semaction( int );
- #define semlock() _semaction(-1)
- #define semunlock() _semaction(1)
-#endif
+static inline void _semaction( int, int );
+#define sessions_lock() _semaction(1, -1)
+#define sessions_unlock() _semaction(1, 1)
+#define database_lock() _semaction(0, -1)
+#define database_unlock() _semaction(0, 1)
 
 int loadConfig( void )
 {
@@ -346,13 +343,14 @@ int tryLogin( const char* user, const char* pass )
 
 void deinitAndErr( int eval, const char* fmt )
 {
-	semlock();
+	//database_lock();
 	unloadDatabase();
 	unloadUsers();
-	semunlock();
+	//database_unlock();
 	warn( fmt );
 #ifdef POSIX_MUTEX
-	while ( pthread_mutex_destroy( &mutex ) );
+	while ( pthread_mutex_destroy( &mutexes[0] ) );
+	while ( pthread_mutex_destroy( &mutexes[1] ) );
 #else	
 	if ( semctl( semfd, 0, IPC_RMID ) < 0 )
 		err( eval, "server: Impossibile eliminare il semaforo" );
@@ -362,16 +360,17 @@ void deinitAndErr( int eval, const char* fmt )
 
 void deinitAndExit( void )
 {
-	semlock();
+	database_lock();
 	unloadDatabase();
 	unloadUsers();
-	semunlock();
+	database_unlock();
 #ifdef POSIX_MUTEX
-	if ( pthread_mutex_destroy( &mutex ) )
+	if ( pthread_mutex_destroy( &mutexes[0] ) || pthread_mutex_destroy( &mutexes[1] ) )
 	{
 		fprintf( stderr, "server: ATTENZIONE: Non sono riuscito a eliminare il mutex perché un thread lo sta tenendo ancora bloccato. Non dovrebbero esserci altri thread attivi a questo punto!" );
 		// Evita di perdere dati preferendo un deadlock con CPU al 100%. Questo è chiaramente uno scenario catastrofico
-		while ( pthread_mutex_destroy( &mutex ) );
+		while ( pthread_mutex_destroy( &mutexes[0] ) );
+		while ( pthread_mutex_destroy( &mutexes[1] ) );
 	}
 #else
 	if ( semctl( semfd, 0, IPC_RMID ) < 0 )
@@ -381,12 +380,17 @@ void deinitAndExit( void )
 	exit( EXIT_SUCCESS );
 }
 
-#ifndef POSIX_MUTEX
-void _semaction( int val )
+static inline void _semaction( int which, int val )
 {
+#ifdef POSIX_MUTEX
+	if ( val < 0 )
+		pthread_mutex_lock( &mutexes[ which ] );
+	else
+		pthread_mutex_unlock( &mutexes[ which ] );
+#else
 	struct sembuf sem_action;
 
-	sem_action.sem_num = 0;
+	sem_action.sem_num = which;
 	sem_action.sem_op  = val;
 	sem_action.sem_flg = 0;
 
@@ -397,8 +401,8 @@ retry_semaction:
 			goto retry_semaction;
 		deinitAndErr( EXIT_FAILURE, "server: Impossibile bloccare il semaforo, arresto forzato" );
 	}
-}
 #endif
+}
 
 void closeSocket( int sockfd )
 {
@@ -551,7 +555,9 @@ void* clientSession( void* arg )
 			if ( ret < 0 )
 			{
 				closeSocket( session->sockfd );
+				sessions_lock();
 				session->tid = 0;
+				sessions_unlock();
 				return NULL;
 			}
 			else if ( ret )
@@ -559,7 +565,9 @@ void* clientSession( void* arg )
 				fprintf( stderr, "server (#%lu): Ricevuto campo inaspettato (%#08b diverso da LOGIN). Chiudo la connessione.\n",
 						(unsigned long)session->tid, *msg_buf );
 				closeSocket( session->sockfd );
+				sessions_lock();
 				session->tid = 0;
+				sessions_unlock();
 				return NULL;
 			}
 			
@@ -578,9 +586,9 @@ void* clientSession( void* arg )
 		}
 	}
 
-	semlock();
+	database_lock();
 	uint16_t post_count = gPostCount;
-	semunlock();
+	database_unlock();
 	msg_buf[0] = SERV_WELCOME;
 	msg_buf[1] = ( unsigned char )user_auth_level;
 	memcpy( msg_buf + 2, &post_count, 2 );
@@ -599,7 +607,9 @@ void* clientSession( void* arg )
 		{
 			printf( "server: Sessione di %s terminata\n", inet_ntoa( session->client_addr ) );
 			closeSocket( session->sockfd );
+			sessions_lock();
 			session->tid = 0;
+			sessions_unlock();
 			return NULL;
 		}
 
@@ -611,7 +621,7 @@ void* clientSession( void* arg )
 				uint8_t	       count   = 0;
 				unsigned char* scanptr = msg_buf + 4;
 
-				semlock();
+				database_lock();
 				//for ( unsigned int i = (page - 1) * limit; i < page * limit; i++ )
 				if ( page > 0 )
 					for ( int i = gPostCount - 1 - limit * (page - 1); i >= gPostCount - limit * page; i-- )
@@ -634,22 +644,22 @@ void* clientSession( void* arg )
 						count++;
 					}
 
+				database_unlock();
 				msg_buf[0] = SERV_ENTRIES;
 				memcpy( msg_buf + 1, &gPostCount, 2 );
 				msg_buf[3] = count;
 				msg_size = scanptr - msg_buf;
-				semunlock();
 				break;
 
 			case CLI_POST:
 				msg_size = 2;
 
-				semlock();
+				database_lock();
 				if ( gPostCount == 2048 )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0xFF;
-					semunlock();
+					database_unlock();
 					break;
 				}
 
@@ -661,7 +671,7 @@ void* clientSession( void* arg )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0;
-					semunlock();
+					database_unlock();
 					break;
 				}
 
@@ -675,7 +685,7 @@ void* clientSession( void* arg )
 					/* Out of memory! */
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0x01;
-					semunlock();
+					database_unlock();
 					break;
 				}
 				Post *new_post = gPosts[ gPostCount++ ];
@@ -701,7 +711,7 @@ void* clientSession( void* arg )
 				if ( storeDatabase() < 0 )
 					printf( "server: Impossibile aggiornare il database dei messaggi\n" );
 
-				semunlock();
+				database_unlock();
 				msg_buf[0] = SERV_OK;
 				msg_size = 1;
 				break;
@@ -729,7 +739,7 @@ void* clientSession( void* arg )
 					break;
 				}
 
-				semlock();
+				database_lock();
 				int post_index = -1;
 				for ( int i = 0; i < gPostCount; i++ )
 				{
@@ -741,7 +751,7 @@ void* clientSession( void* arg )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0xFF;
-					semunlock();
+					database_unlock();
 					break;
 				}
 
@@ -749,7 +759,7 @@ void* clientSession( void* arg )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0x1;
-					semunlock();
+					database_unlock();
 					break;
 				}
 
@@ -757,10 +767,10 @@ void* clientSession( void* arg )
 				storeDatabase();
 				unloadDatabase();
 				loadDatabase();
+				database_unlock();
 
 				msg_buf[0] = SERV_OK;
 				msg_size = 1;
-				semunlock();
 				break;
 
 			case CLI_LOGIN:
@@ -818,13 +828,15 @@ int main( int argc, char *argv[] )
 	sigaction( SIGTERM, &sa2, NULL );
 
 #ifdef POSIX_MUTEX
-	pthread_mutex_init( &mutex, NULL );
+	pthread_mutex_init( &mutexes[0], NULL );
+	pthread_mutex_init( &mutexes[1], NULL );
 #else
 	if ( ( semfd = semget( IPC_PRIVATE, 2, 0666 ) ) < 0 )
-		err( EXIT_FAILURE, "Impossibile ottenere il semaforo" );
+		err( EXIT_FAILURE, "Impossibile ottenere i semafori" );
 
-	if ( semctl( semfd, 0, SETVAL, 1 ) < 0 )
-		err( EXIT_FAILURE, "Impossibile inizializzare il semaforo" );
+	unsigned short semvals[2] = { 1, 1 };
+	if ( semctl( semfd, 0, SETALL, semvals ) < 0 )
+		err( EXIT_FAILURE, "Impossibile inizializzare i semafori" );
 #endif
 
 	if ( loadConfig() < 0 )
@@ -894,6 +906,7 @@ int main( int argc, char *argv[] )
 			continue;
 		}
 
+		sessions_lock();
 		int slot = -1;
 		for ( int i = 0; i < MAXCONNS; i++ )
 			if ( !sessions[ i ].tid )
@@ -911,17 +924,21 @@ int main( int argc, char *argv[] )
 
 		sessions[ slot ].sockfd  = s_client;
 		sessions[ slot ].client_addr = client_addr.sin_addr;
+		sessions_unlock();
 
 		if ( pthread_create( &sessions[ slot ].tid, NULL, clientSession, &sessions[ slot ] ) )
 		{
 			warn( "server: Impossibile spawnare un nuovo thread per processare la sessione di %s. Chiudo la connessione.\nMotivo",
 					inet_ntoa( client_addr.sin_addr ) );
 			closeSocket( s_client );
+			sessions_lock();
 			sessions[ slot ].tid = 0;
+			sessions_unlock();
 		}
 
 	}
 
+	// qui non serve sincronizzare (non sto più scrivendo su sessions perché non sto più accettando connessioni)
 	for ( int i = 0; i < MAXCONNS; i++ )
 		if ( sessions[ i ].tid )
 		{
