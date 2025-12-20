@@ -467,6 +467,11 @@ int drawTui( ClientState *state )
 	}
 }
 
+int drawError( char *error_msg )
+{
+	printf( "\033[2J\033[H%s", error_msg );
+}
+
 
 //int test()
 //{

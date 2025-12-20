@@ -25,7 +25,8 @@ enum screen_state : uint8_t {
 	STATE_INTRO      = UI_READPOST,
 	STATE_LISTING    = UI_PAGENAV | UI_LISTNAV | UI_READPOST | UI_WRITEPOST | UI_DELPOST,
 	STATE_SINGLEPOST = UI_TEXTNAV | UI_BACK | UI_DELPOST,
-	STATE_WRITING    = UI_SENDPOST | UI_BACK
+	STATE_WRITING    = UI_SENDPOST | UI_BACK,
+	STATE_ERROR      = 0
 };
 
 enum draft_state : uint8_t {
@@ -69,3 +70,4 @@ int updateWinSize();
 int drawTui( ClientState *state );
 //int drawTui_listView( ClientState *state );
 //int drawTui_readPost( ClientState *state );
+int drawError( char *error_msg );

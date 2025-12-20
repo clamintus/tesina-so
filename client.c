@@ -93,6 +93,7 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 	while ( send( sockfd, msg_buf, *len, 0 ) < 0 )
 	{
 		if ( errno != EINTR )
+			// Broken pipe, Connection reset, Timed out...
 			return -1;
 	}
 
@@ -155,7 +156,7 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 
 void exitProgram( int exit_code )
 {
-	if ( gState.current_screen != STATE_INTRO ) printf( "\033[2J" );
+	if ( gState.current_screen != STATE_INTRO ) printf( "\033[2J\033[H" );
 
 	close( s_sock );
 	for ( int i = 0; i < gState.loaded_posts; i++ )
@@ -181,6 +182,9 @@ int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
 	*msg_size  = 3;
 
 	int ret = SendAndGetResponse( s_sock, msg_buf, msg_size, SERV_ENTRIES );
+	
+	if ( ret <= 0 )
+		return ret;
 
 	//if ( msg_buf[3] == 0 )
 	//	return 0;
@@ -239,6 +243,7 @@ int reauth( unsigned char* msg_buf, size_t* msg_size )
 	char user[257];
 	char pass[257];
 	int len_user, len_pass;
+	int ret;
 
 	printf( "\033[2J\033[1;1HOccorre l'autenticazione per continuare.\n\n\033[?25h" );
 	setTerminalMode( TERM_CANON );
@@ -257,13 +262,13 @@ int reauth( unsigned char* msg_buf, size_t* msg_size )
 	memcpy( msg_buf + 3 + len_user, pass, len_pass );
 	*msg_size = 3 + len_user + len_pass;
 
-	if ( SendAndGetResponse( s_sock, msg_buf, msg_size, SERV_WELCOME ) <= 0 )
-		return -1;
+	if ( ( ret = SendAndGetResponse( s_sock, msg_buf, msg_size, SERV_WELCOME ) ) < 0 )
+		return ret;
 
 	gState.auth_level = msg_buf[1];
 	strcpy( gState.user, user );
 	strcpy( gState.pass, pass );
-	return 0;
+	return 1;
 }
 
 int main( int argc, char *argv[] )
@@ -286,6 +291,7 @@ int main( int argc, char *argv[] )
 	sigaction( SIGURG, &sa, NULL );
 	sa.sa_handler   = SIG_IGN;
 	sigaction( SIGINT, &sa, NULL );
+	sigaction( SIGPIPE, &sa, NULL );
 
 	parseCmdLine( argc, argv, &s_addr, &s_port );
 	if ( s_port < 0 || s_port > 65535 )
@@ -328,6 +334,15 @@ int main( int argc, char *argv[] )
 	if ( connect( s_sock, (struct sockaddr *)&servaddr, sizeof( servaddr ) ) < 0 )
 		err( EXIT_FAILURE, "client: impossibile connettersi al server" );
 
+	struct timeval timeout;
+	timeout.tv_sec  = 10;
+	timeout.tv_usec = 0;
+	if ( setsockopt( s_sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof( struct timeval ) ) == -1 )
+		warn( "client: Impossibile impostare il timeout sulla socket" );
+
+	// Ci registriamo per gestire SIGURG
+	fcntl( s_sock, F_SETOWN, getpid() );
+
 	
 	/* Main loop */
 
@@ -335,9 +350,6 @@ int main( int argc, char *argv[] )
 	printf( "Connessione stabilita.\n\n" );
 	printf( "Indirizzo: %s\tPorta: %d\n", s_addr, s_port );
 #endif
-
-	// Ci registriamo per gestire SIGURG
-	fcntl( s_sock, F_SETOWN, getpid() );
 
 	int ret;
        	while ( ( ret = recv( s_sock, msg_buf, 1, 0 ) ) < 0 )
@@ -373,7 +385,10 @@ int main( int argc, char *argv[] )
 			msg_size = 3 + len_user + len_pass;
 
 			if ( SendAndGetResponse( s_sock, msg_buf, &msg_size, 0 ) < 0 )
+			{
+				printf( "Connessione persa." );
 				exit( EXIT_FAILURE );
+			}
 
 			if ( *msg_buf == SERV_WELCOME )
 			{
@@ -459,7 +474,12 @@ oob:
 				{
 					printf( "Caricamento post...\n\033[?25l" );
 					// carica post...
-					loadPosts( msg_buf, &msg_size, 1 );
+					if ( loadPosts( msg_buf, &msg_size, 1 ) == -1 )
+					{
+						drawError( "Connessione persa.\nImpossibile ottenere i post." );
+						gState.current_screen = STATE_ERROR;
+						break;
+					}
 					gState.current_screen = STATE_LISTING;
 					drawTui( &gState );
 				}
@@ -468,6 +488,10 @@ oob:
 					gState.current_screen = STATE_SINGLEPOST;
 					gState.post_offset = 0;
 					drawTui( &gState );
+				}
+				else if ( gState.current_screen == STATE_ERROR )
+				{
+					exitProgram( EXIT_FAILURE );
 				}
 				break;
 
@@ -520,7 +544,12 @@ oob:
 				{
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
-					loadPosts( msg_buf, &msg_size, --gState.loaded_page );
+					if ( loadPosts( msg_buf, &msg_size, --gState.loaded_page ) == -1 )
+					{
+						drawError( "Connessione persa.\nImpossibile aggiornare i post." );
+						gState.current_screen = STATE_ERROR;
+						break;
+					}
 					gState.selected_post = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
@@ -539,7 +568,12 @@ oob:
 				{
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
-					loadPosts( msg_buf, &msg_size, ++gState.loaded_page );
+					if ( loadPosts( msg_buf, &msg_size, ++gState.loaded_page ) == -1 )
+					{
+						drawError( "Connessione persa.\nImpossibile aggiornare i post." );
+						gState.current_screen = STATE_ERROR;
+						break;
+					}
 					gState.selected_post = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
@@ -623,9 +657,16 @@ oob:
 					if ( gState.auth_level < 0 )
 					{
 						int reauth_ret = reauth( msg_buf, &msg_size );
-						if ( reauth_ret == -1 )
+						if ( !reauth_ret )
 						{
 							sprintf( gState.state_label, "Credenziali errate!" );
+							drawTui( &gState );
+							gState.state_label[0] = '\0';
+							break;
+						}
+						else if ( reauth_ret == -1 )
+						{
+							sprintf( gState.state_label, "Errore di comunicazione" );
 							drawTui( &gState );
 							gState.state_label[0] = '\0';
 							break;
@@ -679,7 +720,19 @@ oob:
 						drawTui( &gState );
 						gState.current_screen = STATE_LISTING;
 						printf( "\033[?25l" );
-						loadPosts( msg_buf, &msg_size, gState.loaded_page );
+						if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
+						{
+							drawError( "Connessione persa.\nImpossibile aggiornare i post." );
+							gState.current_screen = STATE_ERROR;
+							break;
+						}
+
+					}
+					else if ( ret == -1 )
+					{
+						drawError( "Connessione persa.\nImpossibile inviare il post!" );
+						gState.current_screen = STATE_ERROR;
+						break;
 					}
 					else
 						switch ( ( unsigned char )msg_buf[1] )
@@ -718,7 +771,7 @@ oob:
 						      user,
 						      gState.cached_posts[ gState.selected_post ]->len_mittente ) ) )
 				{
-					if ( gState.auth_level < 0 && reauth( msg_buf, &msg_size ) < 0 )
+					if ( gState.auth_level < 0 && reauth( msg_buf, &msg_size ) <= 0 )
 					{
 						sprintf( gState.state_label, "Credenziali errate!" );
 						drawTui( &gState );
@@ -736,8 +789,19 @@ oob:
 					{
 						sprintf( gState.state_label, "Post cancellato!" );
 						gState.current_screen = STATE_LISTING;
-						loadPosts( msg_buf, &msg_size, gState.loaded_page );
+						if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
+						{
+							drawError( "Connessione persa dopo l'eliminazione del post.\nIl post è stato cancellato." );
+							gState.current_screen = STATE_ERROR;
+							break;
+						}
 						drawTui( &gState );
+						break;
+					}
+					else if ( ret == -1 )
+					{
+						drawError( "Connessione persa!\nImpossibile cancellare il post." );
+						gState.current_screen = STATE_ERROR;
 						break;
 					}
 					else
