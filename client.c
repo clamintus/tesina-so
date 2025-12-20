@@ -11,6 +11,8 @@
 #include <errno.h>
 #include <err.h>
 #include <termios.h>
+#include <signal.h>
+#include <fcntl.h>
 #include "types.h"
 #include "helpers.h"
 #include "ui.h"
@@ -18,6 +20,7 @@
 int   s_sock;
 //Post *gLoadedPosts[10] = { 0 };
 ClientState gState;
+volatile sig_atomic_t gNewDataAvailable = 0;
 
 #define OGGETTO_MAXLEN 255
 #define TESTO_MAXLEN 60000
@@ -31,6 +34,11 @@ extern int max_posts_per_page;
  *  - se ricevo AUTHENTICATE -> chiedi user e pass -> invia LOGIN
  *  - main menu
  */
+
+void oob_handler( int sig )
+{
+	gNewDataAvailable = 1;
+}
 
 int parseCmdLine( int argc, char *argv[], char **server_addr, int *server_port )
 {
@@ -269,6 +277,15 @@ int main( int argc, char *argv[] )
 	size_t		    msg_size;
 	struct sockaddr_in  servaddr;
 	struct hostent     *he;
+	struct sigaction    sa = { 0 };
+	sigset_t	    sigset;
+
+	sigfillset( &sigset );
+	sa.sa_handler   = oob_handler;
+	sa.sa_mask      = sigset;
+	sigaction( SIGURG, &sa, NULL );
+	sa.sa_handler   = SIG_IGN;
+	sigaction( SIGINT, &sa, NULL );
 
 	parseCmdLine( argc, argv, &s_addr, &s_port );
 	if ( s_port < 0 || s_port > 65535 )
@@ -318,6 +335,9 @@ int main( int argc, char *argv[] )
 	printf( "Connessione stabilita.\n\n" );
 	printf( "Indirizzo: %s\tPorta: %d\n", s_addr, s_port );
 #endif
+
+	// Ci registriamo per gestire SIGURG
+	fcntl( s_sock, F_SETOWN, getpid() );
 
 	int ret;
        	while ( ( ret = recv( s_sock, msg_buf, 1, 0 ) ) < 0 )
@@ -407,7 +427,18 @@ int main( int argc, char *argv[] )
 
 	while (1)
 	{
+		if ( gNewDataAvailable )
+		{
+oob:
+			// handle OOB message...
+			gNewDataAvailable = 0;
+			printf( "\a" );
+		}
+
 		int action = getchar();
+
+		if ( action == EOF && gNewDataAvailable )
+			goto oob;
 
 		switch ( action )
 		{

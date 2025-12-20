@@ -527,6 +527,25 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 	return *msg_buf != resp;
 }
 
+inline static void notifyAllClientsExcept( struct session_data *sender )
+{
+	int targets[MAXCONNS];
+	int count = 0;
+
+	sessions_lock();
+	for ( int i = 0; i < MAXCONNS; i++ )
+	{
+		if ( &sessions[ i ] == sender )
+			continue;
+		if ( sessions[ i ].tid )
+			targets[ count++ ] = sessions[ i ].sockfd;
+	}
+	sessions_unlock();
+
+	for ( int i = 0; i < count; i++ )
+		send( targets[ i ], "!", 1, MSG_OOB | MSG_NOSIGNAL );
+}		
+
 
 void* clientSession( void* arg )
 {
@@ -714,6 +733,7 @@ void* clientSession( void* arg )
 				database_unlock();
 				msg_buf[0] = SERV_OK;
 				msg_size = 1;
+				notifyAllClientsExcept( session );
 				break;
 
 			case CLI_DELPOST:
