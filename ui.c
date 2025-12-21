@@ -30,7 +30,7 @@ int updateWinSize( ClientState *state )
 	if ( window.ws_col < 87 )
 	{
 		state->current_layout = LAYOUT_MOBILE;
-		max_posts_per_page = window.ws_row - 12;
+		max_posts_per_page = window.ws_row - 6;
 	}
 	else
 	{
@@ -53,14 +53,20 @@ void draw_box()
 		"\033[%d;%dH┛", window.ws_col, window.ws_row, window.ws_row, window.ws_col );
 }
 
-void draw_hline( int row )
+void draw_hline2( int row )
 {
 	if ( row == 1 || row == window.ws_row ) return;
 
-	for ( unsigned short x = 1; x < window.ws_col; x++ )
+	for ( unsigned short x = 0; x < window.ws_col; x++ )
 		printf( "\033[%d;%dH─", row, x );
+}
+
+void draw_hline( int row )
+{
+	draw_hline2( row );
 	printf( "\033[%d;1H┠\033[%d;%dH┨", row, row, window.ws_col );
 }
+
 
 char *stringifyTimestamp( time_t timestamp )
 {
@@ -225,10 +231,36 @@ int draw_header( ClientState *state )
 {
 	char left_text[257];
 	char right_text[100];
+	int left_text_len;
+	int right_text_len;
 	const char* listing_str    = "Lista post";
 	const char* writing_str    = "Nuovo post";
 	const char* singlepost_str = "Leggi post";
+	int row_hdr = state->current_layout == LAYOUT_MOBILE ? 1 : 2;
+	int col_off = state->current_layout == LAYOUT_MOBILE ? 1 : 3;
 
+	if ( state->current_layout == LAYOUT_MOBILE )
+	{
+		switch ( state->current_screen )
+		{
+			case STATE_LISTING:
+				if ( *state->board_title )
+					strcpy( left_text, state->board_title );
+				else
+					strcpy( left_text, state->server_addr );
+				break;
+
+			case STATE_WRITING:
+				sprintf( left_text, "%.*s", writing_str, state->buf_oggetto[0] == '\0' ? "(nessun oggetto)" : state->buf_oggetto );
+				break;
+
+			case STATE_SINGLEPOST:
+				strcpy( left_text, singlepost_str );
+				break;
+		}
+	}
+	else
+     {	
 	switch ( state->current_screen )
 	{
 		case STATE_LISTING:
@@ -253,30 +285,78 @@ int draw_header( ClientState *state )
 			sprintf( left_text, "%s", singlepost_str );
 			break;
 	}
+     }
 
-	int right_text_len;
-	switch ( state->auth_level )
+	if ( state->current_layout == LAYOUT_MOBILE )
 	{
-		case 1:
-			sprintf( right_text, "Loggato come:  \033[1m%s" ANSIRST, state->user );
-			right_text_len = -8;
-			break;
+		sprintf( right_text, "%u/%u - ", state->loaded_page, state->num_posts ? ( state->num_posts - 1 ) / post_limit + 1 : 1 );
+		switch ( state->auth_level )
+		{
+			case 1:
+				sprintf( right_text + strlen( right_text ), "👑 \033[1m%s" ANSIRST, state->user );
+				right_text_len = -8;
+				break;
 
-		case 0:
-			sprintf( right_text, "Loggato come:  %s", state->user );
-			right_text_len = 0;
-			break;
+			case 0:
+				sprintf( right_text + strlen( right_text ), "👤 %s", state->user );
+				right_text_len = 0;
+				break;
 
-		case -1:
-			sprintf( right_text, "Loggato come:  " ANSIITA "anonymous" ANSIRST );
-			right_text_len = -12;
-			break;
+			case -1:
+				sprintf( right_text + strlen( right_text ), "🫥 " ANSIITA "anon" ANSIRST );
+				right_text_len = -12;
+				break;
+		}
+	}
+	else
+	{
+		switch ( state->auth_level )
+		{
+			case 1:
+				sprintf( right_text, "Loggato come:  \033[1m%s" ANSIRST, state->user );
+				right_text_len = -8;
+				break;
+
+			case 0:
+				sprintf( right_text, "Loggato come:  %s", state->user );
+				right_text_len = 0;
+				break;
+
+			case -1:
+				sprintf( right_text, "Loggato come:  " ANSIITA "anonymous" ANSIRST );
+				right_text_len = -12;
+				break;
+		}
 	}
 	right_text_len += strlen( right_text );
+	left_text_len = strlen( left_text );
 
-	draw_hline( 3 );
-	printf( "\033[2;4H%s\033[2;%dH%s", left_text, window.ws_col - 3 - right_text_len, right_text );
+	if ( state->current_layout == LAYOUT_STANDARD )
+		draw_hline( 3 );
+
+	// Spazio per ltext: window.ws_row - right_text_len - padding
+	const int padding_hdr = 3;
+
+	int x_max = (int)window.ws_col - right_text_len - padding_hdr - 2 * col_off;
+	if ( left_text_len > x_max )
+	{
+		for ( int i = 1; i <= 3 && left_text_len - i >= 0; i++ )
+			left_text[ x_max - i ] = '.';
+		left_text[ x_max ] = '\0';
+	}
+
+	//printf( "\033[2;4H%s\033[2;%dH%s", left_text, window.ws_col - padding_hdr - right_text_len, right_text );
 	//printf( "\033[2;4H%s", left_text );
+
+	if ( state->current_layout == LAYOUT_MOBILE )
+	{
+		// Dipingi barra bianca + lascia pennello bianco
+		printf( "\033[%d;1H\033[7m", row_hdr );
+		for ( int i = 0; i < window.ws_col; i++ )
+			putchar( ' ' );
+	}
+	printf( "\033[%d;%dH%s\033[%d;%dH%s", row_hdr, 1 + col_off, left_text,
+					      row_hdr, window.ws_col - right_text_len - col_off + 3, right_text );
 }
 
 int draw_footer( ClientState *state )
@@ -406,6 +486,9 @@ int drawTui_listView( ClientState *state )
 	draw_header( state );
 	draw_footer( state );
 
+	int y_off = state->current_layout == LAYOUT_MOBILE ? 2 : 4;
+	int x_off = state->current_layout == LAYOUT_MOBILE ? 0 : 3;
+
 	
 	if ( state->loaded_posts == 0 )
 	{
@@ -428,19 +511,23 @@ int drawTui_listView( ClientState *state )
 		//strncpy( oggetto, post->data + post->len_mittente, post->len_oggetto );
 		ora_post = stringifyTimestamp( (time_t)timestamp );
 
-		int oggetto_trunc_pos = window.ws_col - 6 - 5 - 4 - post->len_mittente;
+		int oggetto_trunc_pos = state->current_layout == LAYOUT_MOBILE ? window.ws_col - 6 - 1 - post->len_mittente :
+										 window.ws_col - 6 - 5 - 4 - post->len_mittente;
+		if ( oggetto_trunc_pos < 0 ) oggetto_trunc_pos = 0;
 		//if ( strlen( oggetto ) > oggetto_trunc_pos ) oggetto[ oggetto_trunc_pos ] = '\0';	// tronca oggetto se più lungo di schermo
 		if ( post->len_oggetto &&
 		     post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
-		if ( oggetto_trunc_pos < 0 ) oggetto_trunc_pos = 0;
 
-		printf( "\033[%d;3H", 5 + i - state->page_offset );
-		printf( "%s %s%s %.*s %.*s%s", selected ? "*" : " ",
-					       is_new ? ANSINEW : "", ora_post,
-								      post->len_mittente, post->data,
-								      oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
+		char* SEL   = state->current_layout == LAYOUT_MOBILE ? "\033[7m" : "> ";
+		char* UNSEL = state->current_layout == LAYOUT_MOBILE ? ""        : "  ";
+
+		printf( "\033[%d;%dH", 1 + y_off + i - state->page_offset, x_off );
+		printf( "%s%s%s %.*s %.*s%s", selected ? SEL : UNSEL,
+					      is_new ? ANSINEW : "", ora_post,
+								     post->len_mittente, post->data,
+								     oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
 								 					     ANSIITA "(nessun oggetto)" ANSIRST,
-		     			       is_new ? ANSIRST : "" );
+		     			      ANSIRST );
 
 		//free( mittente );
 		//free( oggetto );
