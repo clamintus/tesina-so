@@ -172,6 +172,8 @@ void exitProgram( int exit_code )
 
 	free( gState.cached_posts );
 	gState.cached_posts = NULL;
+	if ( gState.opened_post ) free( gState.opened_post );
+	gState.opened_post = NULL;
 
 	setTerminalMode( TERM_CANON );
 	printf( "\033[?25h" );	// show cursor
