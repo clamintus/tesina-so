@@ -15,7 +15,7 @@ else ifdef POSIX_MUTEX
 	CFLAGS += -DPOSIX_MUTEX
 endif
 
-ifdef $(DEBUG)
+ifdef DEBUG
 	CFLAGS += -DDEBUG
 endif
 ifeq ($(DEBUG),2)

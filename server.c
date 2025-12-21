@@ -472,8 +472,10 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 
 	while ( ( rc = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
 	{
-		if ( errno != EINTR )
-			return -1;
+		if ( rc == -1 && errno == EINTR )
+			continue;
+
+		return -1;
 	}
 	*len += rc;
 
@@ -692,7 +694,7 @@ void* clientSession( void* arg )
 				memcpy( client_user, msg_buf + 3, msg_buf[1] );
 				memcpy( client_pass, msg_buf + 3 + msg_buf[1], msg_buf[2] );
 				client_user[ msg_buf[1] ] = '\0';
-				client_user[ msg_buf[2] ] = '\0';
+				client_pass[ msg_buf[2] ] = '\0';
 				if ( tryLogin( client_user, client_pass ) < 1 )
 				{
 					msg_buf[0] = SERV_NOT_OK;

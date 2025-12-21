@@ -102,9 +102,10 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 	ssize_t rc;
 
 	while ( ( rc = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
-	{
-		if ( errno != EINTR )
-			return -1;
+	{	
+		if ( rc == -1 && errno == EINTR )
+			continue;
+		return -1;
 	}
 	*len += rc;
 
@@ -378,13 +379,12 @@ int main( int argc, char *argv[] )
 #endif
 
 	int ret;
-       	while ( ( ret = recv( s_sock, msg_buf, 1, 0 ) ) < 0 )
+       	while ( ( ret = recv( s_sock, msg_buf, 1, 0 ) ) < 1 )
 	{
-		if ( errno != EINTR )
-		{
-			warn( "client: ricezione fallita" );
-			exitProgram( EXIT_FAILURE );
-		}
+		if ( ret == -1 && errno == EINTR )
+			continue;
+		warn( "client: ricezione fallita" );
+		exitProgram( EXIT_FAILURE );
 	}
 
 	if ( *msg_buf == SERV_AUTHENTICATE )
@@ -513,8 +513,8 @@ oob:
 		// La select() ha ritornato, getchar() è garantita non bloccante ora perché abbiamo i dati in input
 		int action = getchar();
 
-		//if ( action == EOF && gNewDataAvailable )
-		//	goto oob;
+		if ( action == EOF )
+			exitProgram( EXIT_FAILURE );
 
 		switch ( action )
 		{
@@ -621,13 +621,17 @@ oob:
 				{
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
+
+					if ( gState.loaded_posts &&
+					     gState.cached_posts[0]->timestamp > gState.most_recent_post_shown )
+						gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
+
 					if ( loadPosts( msg_buf, &msg_size, --gState.loaded_page ) == -1 )
 					{
 						drawError( "Connessione persa.\nImpossibile aggiornare i post." );
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
-					if ( gState.loaded_posts ) gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
 					gState.selected_post = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
@@ -646,13 +650,17 @@ oob:
 				{
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
+
+					if ( gState.loaded_posts &&
+					     gState.cached_posts[0]->timestamp > gState.most_recent_post_shown )
+						gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
+
 					if ( loadPosts( msg_buf, &msg_size, ++gState.loaded_page ) == -1 )
 					{
 						drawError( "Connessione persa.\nImpossibile aggiornare i post." );
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
-					if ( gState.loaded_posts ) gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
 					gState.selected_post = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
