@@ -39,6 +39,7 @@ typedef struct client_state {
 	Post 		  **cached_posts;
 	unsigned int      num_posts;
 	unsigned int	  loaded_page;
+	unsigned int      page_offset;
 	unsigned int	  loaded_posts;
 	unsigned int      selected_post;
 	Post		  *opened_post;

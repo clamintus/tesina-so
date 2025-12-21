@@ -19,8 +19,8 @@ ifdef DEBUG
 	CFLAGS += -DDEBUG
 endif
 ifeq ($(DEBUG),2)
-	CFLAGS += -fsanitize=address
-	LDFLAGS += -fsanitize=address
+	CFLAGS += -fsanitize=address,undefined
+	LDFLAGS += -fsanitize=address,undefined
 endif
 
 client: client.o helpers.o ui.o

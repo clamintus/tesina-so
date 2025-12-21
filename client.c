@@ -22,10 +22,12 @@ int   s_sock;
 //Post *gLoadedPosts[10] = { 0 };
 ClientState gState;
 volatile sig_atomic_t gNewDataAvailable = 0;
+volatile sig_atomic_t gResized = 0;
 
 #define OGGETTO_MAXLEN 255
 #define TESTO_MAXLEN 60000
 
+int post_limit;
 extern int max_posts_per_page;
 extern struct winsize window;
 
@@ -40,6 +42,11 @@ extern struct winsize window;
 void oob_handler( int sig )
 {
 	gNewDataAvailable = 1;
+}
+
+void resize_handler( int sig )
+{
+	gResized = 1;
 }
 
 int parseCmdLine( int argc, char *argv[], char **server_addr, int *server_port )
@@ -184,7 +191,7 @@ int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
 {
 	msg_buf[0] = CLI_GETPOSTS;
 	msg_buf[1] = page;
-	msg_buf[2] = max_posts_per_page;
+	msg_buf[2] = post_limit;
 	*msg_size  = 3;
 
 	int ret = SendAndGetResponse( s_sock, msg_buf, msg_size, SERV_ENTRIES );
@@ -203,7 +210,7 @@ int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
 	gState.loaded_page  = page;
 	gState.loaded_posts = msg_buf[3];
 
-	for ( int i = 0; i < max_posts_per_page; i++ )
+	for ( int i = 0; i < post_limit; i++ )
 		if ( gState.cached_posts[ i ] )
 		{
 			free( gState.cached_posts[ i ] );
@@ -218,8 +225,8 @@ int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
 			return 0;
 		}
 
-		unsigned char last_available_page = ( gState.num_posts - 1 ) / max_posts_per_page + 1;
-		gState.selected_post = ( gState.num_posts - 1 ) % max_posts_per_page;
+		unsigned char last_available_page = ( gState.num_posts - 1 ) / post_limit + 1;
+		gState.selected_post = ( gState.num_posts - 1 ) % post_limit;
 		return loadPosts( msg_buf, msg_size, last_available_page );
 	}
 
@@ -272,9 +279,13 @@ int reauth( unsigned char* msg_buf, size_t* msg_size )
 	if ( ( ret = SendAndGetResponse( s_sock, msg_buf, msg_size, SERV_WELCOME ) ) < 0 )
 		return ret;
 
+	if ( !ret )
+		return 0;
+
 	gState.auth_level = msg_buf[1];
 	strcpy( gState.user, user );
 	strcpy( gState.pass, pass );
+	
 	return 1;
 }
 
@@ -296,9 +307,14 @@ int main( int argc, char *argv[] )
 	sa.sa_handler   = oob_handler;
 	sa.sa_mask      = sigset;
 	sigaction( SIGURG, &sa, NULL );
+	sa.sa_handler   = resize_handler;
+	sa.sa_mask      = sigset;
+	sigaction( SIGWINCH, &sa, NULL );
 	sa.sa_handler   = SIG_IGN;
 	sigaction( SIGINT, &sa, NULL );
 	sigaction( SIGPIPE, &sa, NULL );
+
+	gState.current_screen = STATE_INTRO;
 
 	parseCmdLine( argc, argv, &s_addr, &s_port );
 	if ( s_port < 0 || s_port > 65535 )
@@ -313,6 +329,7 @@ int main( int argc, char *argv[] )
 	char *fb;
 	if ( updateWinSize() )
 		err( EXIT_FAILURE, "client: Impossibile ottenere le dimensioni della finestra" );
+	post_limit = max_posts_per_page;
 	fb = malloc( window.ws_row * window.ws_col );
 	if ( fb == NULL )
 		err( EXIT_FAILURE, "client: Impossibile allocare memoria per il framebuffer" );
@@ -415,7 +432,8 @@ int main( int argc, char *argv[] )
 
 			if ( SendAndGetResponse( s_sock, msg_buf, &msg_size, 0 ) < 0 )
 			{
-				printf( "Connessione persa." );
+				printf( "Connessione persa.\n" );
+				fflush( stdout );
 				exit( EXIT_FAILURE );
 			}
 
@@ -456,6 +474,7 @@ int main( int argc, char *argv[] )
 	gState.current_screen = STATE_INTRO;
 	gState.cached_posts = NULL;		// da popolare con un'array di N puntatori a Post (N verrà dedotto con updateWindowSize())
 	gState.num_posts = 0;
+	gState.page_offset = 0;
 	gState.selected_post = 0;
 	*gState.state_label = '\0';
 	strncpy( gState.board_title, msg_buf + 13, msg_buf[12] + 1 );
@@ -466,8 +485,8 @@ int main( int argc, char *argv[] )
 
 	//gState.quit_enabled = true;
 
-	gState.cached_posts = malloc( sizeof( char* ) * max_posts_per_page );
-	for ( int i = 0; i < max_posts_per_page; i++ )
+	gState.cached_posts = malloc( sizeof( char* ) * post_limit );
+	for ( int i = 0; i < post_limit; i++ )
 		gState.cached_posts[ i ] = NULL;
 
 	while (1)
@@ -494,6 +513,15 @@ oob:
 			gNewDataAvailable = 0;
 		}
 
+		if ( gResized )
+		{
+resize:
+			updateWinSize();
+			drawTui( &gState );
+
+			gResized = 0;
+		}
+
 		//stdio mi ignora i segnali, sono costretto a fare così
 		fd_set fdset;
 		FD_ZERO( &fdset );
@@ -506,6 +534,11 @@ oob:
 				// Potremmo essere stati svegliati da SIGURG
 				if ( gNewDataAvailable )
 					goto oob;
+				
+				// La finestra potrebbe essere stata ridimensionata
+				if ( gResized )
+					goto resize;
+				
 				continue;
 			}
 
@@ -588,7 +621,8 @@ oob:
 				}
 				else if ( gState.current_screen & UI_LISTNAV && gState.selected_post > 0 )
 				{
-					gState.selected_post--;
+					if ( --gState.selected_post < gState.page_offset )
+						gState.page_offset = gState.selected_post;
 					drawTui( &gState );
 				}
 				break;
@@ -604,9 +638,10 @@ oob:
 					gState.post_offset++;
 					drawTui( &gState );
 				}
-				else if ( gState.current_screen & UI_LISTNAV && gState.selected_post != gState.loaded_posts - 1 )
+				else if ( gState.current_screen & UI_LISTNAV && gState.selected_post + 1 < gState.loaded_posts )
 				{
-					gState.selected_post++;
+					if ( ++gState.selected_post >= max_posts_per_page )
+						gState.page_offset = gState.selected_post - max_posts_per_page + 1;
 					drawTui( &gState );
 				}
 				break;
@@ -635,6 +670,7 @@ oob:
 						break;
 					}
 					gState.selected_post = 0;
+					gState.page_offset = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
 				}
@@ -648,7 +684,7 @@ oob:
 					goto inserisci;
 				}
 				else if ( gState.current_screen & UI_PAGENAV && gState.num_posts != 0 &&
-					  gState.loaded_page < ( gState.num_posts - 1 ) / max_posts_per_page + 1 )
+					  gState.loaded_page < ( gState.num_posts - 1 ) / post_limit + 1 )
 				{
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
@@ -664,6 +700,7 @@ oob:
 						break;
 					}
 					gState.selected_post = 0;
+					gState.page_offset = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
 				}
@@ -857,7 +894,7 @@ oob:
 					goto inserisci;
 				}
 				else if ( gState.current_screen & UI_DELPOST && 1 && gState.loaded_posts > 0 &&
-					  ( gState.auth_level < 0 ||
+					  ( gState.auth_level != 0 ||
 				     	    !strncmp( gState.cached_posts[ gState.selected_post ]->data,
 						      user,
 						      gState.cached_posts[ gState.selected_post ]->len_mittente ) ) )

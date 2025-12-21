@@ -14,6 +14,7 @@
 
 //struct termios term;
 struct winsize window;
+extern int post_limit;
 int max_posts_per_page;
 unsigned int max_post_lines;
 
@@ -95,7 +96,7 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 		return ( unsigned int )-1;
 
 	lines[ l++ ] = curr;
-	lines[ 1 ]   = curr + strlen( str );
+	lines[ 1 ]   = curr + strnlen( str, size );
 
 	//printf( "\033[%d;%dH", y, x );
 
@@ -113,7 +114,7 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 			break;
 
 	      nextword:
-		while ( !isspace( *curr ) )
+		while ( curr - str != size && !isspace( *curr ) )
 		{
 			if ( *curr == '\0' || curr - str == size )
 			{
@@ -223,12 +224,12 @@ int draw_header( ClientState *state )
 			if ( *state->board_title )
 				sprintf( left_text, "%s   |   %s   |   Pagina %u di %u", state->board_title, listing_str,
 				      							 state->loaded_page, state->num_posts ?
-											 ( state->num_posts - 1 ) / max_posts_per_page + 1 :
+											 ( state->num_posts - 1 ) / post_limit + 1 :
 				      							 1	 		);  // da troncare
 			else
 				sprintf( left_text, "Bacheca Elettronica di %s   |   %s   |   Pagina %u di %u", state->server_addr, listing_str,
 				      										state->loaded_page,
-				      					state->num_posts ? ( state->num_posts - 1 ) / max_posts_per_page + 1 :
+				      					state->num_posts ? ( state->num_posts - 1 ) / post_limit + 1 :
 				      							   1  							);
 			break;
 
@@ -278,16 +279,16 @@ int draw_footer( ClientState *state )
 	if ( state->current_screen & UI_TEXTNAV && state->post_lines > max_post_lines )
 		printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Scorri testo\033[%d;5H", window.ws_row - 2 );
 
-	if ( state->current_screen & UI_PAGENAV && state->num_posts > max_posts_per_page && state->num_posts != ( unsigned int ) -1 )
+	if ( state->current_screen & UI_PAGENAV && state->num_posts > post_limit && state->num_posts != ( unsigned int ) -1 )
 		printf( "%s  %s  Cambia pagina\033[%d;36H", state->loaded_page > 1 ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
-				                            state->loaded_page < ( state->num_posts - 1 ) / max_posts_per_page + 1 ?
+				                            state->loaded_page < ( state->num_posts - 1 ) / post_limit + 1 ?
 							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST,
 							    window.ws_row - 4 );
 
 	if ( state->current_screen & UI_READPOST )
 		printf( "\033[%d;36H" ANSIREV " ENTER " ANSIRST "  Leggi post\033[%d;36H", window.ws_row - 4, window.ws_row - 2 );
 
-	if ( state->current_screen & UI_WRITEPOST && state->auth_level != 0 )
+	if ( state->current_screen & UI_WRITEPOST )
 		printf( ANSIREV " W " ANSIRST "  Scrivi post" );
 	if ( state->current_screen & UI_SENDPOST )
 		printf( "\033[%d;9H" ANSIREV " ^X " ANSIRST "  Pubblica\033[%d;9H", window.ws_row - 4, window.ws_row - 2 );
@@ -303,9 +304,10 @@ int draw_footer( ClientState *state )
 		printf( "\033[%d;63H" ANSIREV " R " ANSIRST "  Aggiorna\033[%d;63H", window.ws_row - 4, window.ws_row - 2 );
 
 	if ( state->current_screen & UI_DELPOST && state->loaded_posts > 0 &&
-	     !strncmp( state->cached_posts[ state->selected_post ]->data,
-		       state->user,
-		       state->cached_posts[ state->selected_post ]->len_mittente ) )
+	     ( state->auth_level != 0 ||
+	       !strncmp( state->cached_posts[ state->selected_post ]->data,
+		         state->user,
+		         state->cached_posts[ state->selected_post ]->len_mittente ) ) )
 		printf( ANSIREV " D " ANSIRST "  Elimina post\033[%d;90H", window.ws_row - 2 );
 		
 	if ( state->current_screen != STATE_WRITING )
@@ -337,7 +339,7 @@ int drawTui_listView( ClientState *state )
 		return 0;
 	}
 
-	for ( int i = 0; i < state->loaded_posts; i++ )
+	for ( int i = state->page_offset; i < state->loaded_posts && i < state->page_offset + max_posts_per_page; i++ )
 	{
 		Post *post = state->cached_posts[ i ];
 		char *ora_post;
@@ -357,7 +359,7 @@ int drawTui_listView( ClientState *state )
 		if ( post->len_oggetto &&
 		     post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
 
-		printf( "\033[%d;3H", 5 + i );
+		printf( "\033[%d;3H", 5 + i - state->page_offset );
 		printf( "%s %s%s %.*s %.*s%s", selected ? "*" : " ",
 					       is_new ? ANSINEW : "", ora_post,
 								      post->len_mittente, post->data,

@@ -208,12 +208,14 @@ int loadDatabase( void )
 
 int storeDatabase( void )
 {
+	const char* temp_filepath = "msgdb.tmp";
       dbfileopen2:
-	FILE *fp = fopen( DATABASE_PATH, "w" );
+	FILE *fp = fopen( temp_filepath, "w" );
 	if ( !fp )
 	{
 		if ( errno == EINTR )
 			goto dbfileopen2;
+		warn( "server: storeDatabase: impossibile creare il file temporaneo" );
 		return -1;
 	}
 
@@ -226,19 +228,45 @@ int storeDatabase( void )
 		memcpy( &len_testo, &curr_post->len_testo, 2 );
 		// for ( int j = 0; j < sizeof( curr_post->id ); j++ )
 		// 	fprintf( fp, "%02x", ( ( unsigned char *)&curr_post->id )[ j ] );
-		fprintf( fp, "%08x\x1f%u\x1f", curr_post->id, curr_post->timestamp );
-		fwrite( curr_post->data, curr_post->len_mittente, 1, fp );
-		fputc( '\x1f', fp );
-		fwrite( curr_post->data + curr_post->len_mittente, curr_post->len_oggetto, 1, fp );
-		fputc( '\x1f', fp );
-		fwrite( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto, len_testo, 1, fp );
-		fputc( '\n', fp );
+		if ( fprintf( fp, "%08x\x1f%u\x1f", curr_post->id, curr_post->timestamp ) < 11 )
+		{
+database_error:
+			if ( fclose( fp ) == EOF )
+				warn( "server: storeDatabase: errore nella close" );
+			if ( unlink( temp_filepath ) == -1 )
+				warn( "server: storeDatabase: impossibile eliminare il file temporaneo" );
+			return -1;
+		}
+		if ( curr_post->len_mittente &&
+		     fwrite( curr_post->data, curr_post->len_mittente, 1, fp ) < 1 ) goto database_error;
+		if ( fputc( '\x1f', fp ) == EOF ) goto database_error;
+		if ( curr_post->len_oggetto &&
+		     fwrite( curr_post->data + curr_post->len_mittente, curr_post->len_oggetto, 1, fp ) < 1 ) goto database_error;
+		if ( fputc( '\x1f', fp ) == EOF ) goto database_error;
+		if ( len_testo &&
+		     fwrite( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto, len_testo, 1, fp ) < 1 ) goto database_error;
+		if ( fputc( '\n', fp ) == EOF ) goto database_error;
 	}
 
+	// Salvataggio riuscito
+	while ( fflush( fp ) == EOF )
+	{
+		if ( errno == EINTR )
+			continue;
+		goto database_error;
+	}
+	
 	while ( fclose( fp ) )
 	{
 		if ( errno != EINTR )
-			err( EXIT_FAILURE, "storeDatabase: errore nella close" );
+			goto database_error;
+	}
+
+	// Scambio atomicamente i file
+	if ( rename( temp_filepath, DATABASE_PATH ) == -1 )
+	{
+		warn( "server: storeDatabase: ERRORE: impossibile rinominare il file temporaneo!" );
+		return -1;
 	}
 
 	return 0;
@@ -399,7 +427,11 @@ retry_semaction:
 	{
 		if ( errno == EINTR )
 			goto retry_semaction;
-		deinitAndErr( EXIT_FAILURE, "server: Impossibile bloccare il semaforo, arresto forzato" );
+		//deinitAndErr( EXIT_FAILURE, "server: Impossibile bloccare il semaforo, arresto forzato" );
+
+		// C'è un problema grave (magari semaforo rimosso), il sistema è in stato inconsistente. Termino tutto il processo
+		warn( "server: Impossibile bloccare il semaforo, arresto forzato." );
+		exit( EXIT_FAILURE );
 	}
 #endif
 }
@@ -695,7 +727,7 @@ void* clientSession( void* arg )
 				memcpy( client_pass, msg_buf + 3 + msg_buf[1], msg_buf[2] );
 				client_user[ msg_buf[1] ] = '\0';
 				client_pass[ msg_buf[2] ] = '\0';
-				if ( tryLogin( client_user, client_pass ) < 1 )
+				if ( tryLogin( client_user, client_pass ) < 0 )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0;
@@ -703,11 +735,13 @@ void* clientSession( void* arg )
 					break;
 				}
 
-				Post *sent_post = (Post *)( msg_buf + 3 + msg_buf[1] + msg_buf[2] );
+				unsigned char *sent_post_addr = msg_buf + 3 + msg_buf[1] + msg_buf[2];
+				unsigned char len_mittente = sent_post_addr[4];
+				unsigned char len_oggetto  = sent_post_addr[5];
 				uint16_t len_testo;
-				memcpy( &len_testo, &sent_post->len_testo, 2 );
-
-				gPosts[ gPostCount ] = malloc( POST_HEADER_SIZE + strlen( client_user ) + sent_post->len_oggetto + len_testo );
+				memcpy( &len_testo, sent_post_addr + 6, 2 );	// sent_post->len_testo
+				
+				gPosts[ gPostCount ] = malloc( POST_HEADER_SIZE + strlen( client_user ) + len_oggetto + len_testo );
 				if ( !gPosts[ gPostCount ] )
 				{
 					/* Out of memory! */
@@ -718,7 +752,7 @@ void* clientSession( void* arg )
 				}
 				Post *new_post = gPosts[ gPostCount++ ];
 
-				memcpy( new_post, sent_post, POST_HEADER_SIZE );
+				memcpy( new_post, sent_post_addr, POST_HEADER_SIZE );
 
 				// ignora l'ID inviato insieme al post e creane uno ex novo
 				arc4random_buf( &new_post->id, 4 );
@@ -731,23 +765,24 @@ void* clientSession( void* arg )
 
 				memcpy( (char*)new_post  + POST_HEADER_SIZE, client_user, userlen );
 				memcpy( (char*)new_post  + POST_HEADER_SIZE + userlen,
-					(char*)sent_post + POST_HEADER_SIZE + sent_post->len_mittente,  sent_post->len_oggetto );
-				memcpy( (char*)new_post  + POST_HEADER_SIZE + userlen                 + sent_post->len_oggetto,
-					(char*)sent_post + POST_HEADER_SIZE + sent_post->len_mittente + sent_post->len_oggetto, len_testo );
+					sent_post_addr   + POST_HEADER_SIZE + len_mittente,  len_oggetto );
+				memcpy( (char*)new_post  + POST_HEADER_SIZE + userlen      + len_oggetto,
+					sent_post_addr   + POST_HEADER_SIZE + len_mittente + len_oggetto, len_testo );
 
 				// Sanitizziamo per neutralizzare silenziosamente eventuali attacchi (injection)
-				for ( size_t i = 0; i < ( uint16_t )sent_post->len_oggetto + len_testo; i++ )
+				for ( size_t i = 0; i < len_oggetto + len_testo; i++ )
 				{
 					if ( new_post->data[ userlen + i ] == '\x1f' ||
 					     new_post->data[ userlen + i ] == '\n'   )
 						new_post->data[ userlen + i ] = ' ';
 				}
 
+				int store_res = storeDatabase();
+				database_unlock();
 				printf( "server: Nuovo messaggio pubblicato da %s\n", inet_ntoa( session->client_addr ) );
-				if ( storeDatabase() < 0 )
+				if ( store_res < 0 )
 					printf( "server: Impossibile aggiornare il database dei messaggi\n" );
 
-				database_unlock();
 				msg_buf[0] = SERV_OK;
 				msg_size = 1;
 				notifyAllClientsExcept( session );
@@ -760,7 +795,7 @@ void* clientSession( void* arg )
 				memcpy( client_pass, msg_buf + 3 + msg_buf[1], msg_buf[2] );
 				client_user[ msg_buf[1] ] = '\0';
 				client_pass[ msg_buf[2] ] = '\0';
-				if ( tryLogin( client_user, client_pass ) < 1 )
+				if ( tryLogin( client_user, client_pass ) < 0 )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0x1;
@@ -792,7 +827,7 @@ void* clientSession( void* arg )
 					break;
 				}
 
-				if ( memcmp( gPosts[ post_index ]->data, client_user, gPosts[ post_index ]->len_mittente ) )
+				if ( user_auth_level < 1 && strncmp( gPosts[ post_index ]->data, client_user, gPosts[ post_index ]->len_mittente ) )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0x1;
@@ -801,10 +836,18 @@ void* clientSession( void* arg )
 				}
 
 				bzero( &gPosts[ post_index ]->id, 4 );
-				storeDatabase();
-				unloadDatabase();
-				loadDatabase();
-				database_unlock();
+				if ( storeDatabase() >= 0 )
+				{
+					unloadDatabase();
+					loadDatabase();
+					database_unlock();
+				}
+				else
+				{
+					database_unlock();
+					fprintf( stderr, "server: Impossibile aggiornare il database dei messaggi" );
+					return NULL;
+				}
 
 				notifyAllClientsExcept( session );
 				msg_buf[0] = SERV_OK;
