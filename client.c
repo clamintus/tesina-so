@@ -14,6 +14,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include "types.h"
 #include "helpers.h"
 #include "ui.h"
@@ -327,7 +328,7 @@ int main( int argc, char *argv[] )
 	/* Impostazione buffer I/O e grafica */
 
 	char *fb;
-	if ( updateWinSize() )
+	if ( updateWinSize( &gState ) )
 		err( EXIT_FAILURE, "client: Impossibile ottenere le dimensioni della finestra" );
 	post_limit = max_posts_per_page;
 	fb = malloc( window.ws_row * window.ws_col );
@@ -459,12 +460,14 @@ int main( int argc, char *argv[] )
 
 	uint16_t n_posts;
 	int64_t  server_time;
+	char     server_time_str_buf[20];
 	char     board_title[260];
 	memcpy( &n_posts, msg_buf + 2, 2 );
 	memcpy( &server_time, msg_buf + 4, 8 );
+	strftime( server_time_str_buf, 20, "%d/%m/%Y %H:%M:%S", localtime( ( time_t *)&server_time ) );
 	sprintf( board_title, msg_buf[12] ? " (%.*s)" : "", msg_buf[12], msg_buf + 13 );
 
-	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %lld\n", argv[1], board_title, n_posts, server_time );
+	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %s\n", argv[1], board_title, n_posts, server_time_str_buf );
 	printf( "\nInvio) Leggi i post\n    q) Esci\n\n" );
 	fflush( stdout );
 
@@ -516,7 +519,7 @@ oob:
 		if ( gResized )
 		{
 resize:
-			updateWinSize();
+			updateWinSize( &gState );
 			drawTui( &gState );
 
 			gResized = 0;
@@ -596,8 +599,9 @@ resize:
 						break;
 					}
 					memcpy( gState.opened_post, curr_post, post_size );
-					gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
+					if ( gState.opened_post->timestamp > gState.most_recent_post_shown ) gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
 					gState.current_screen = STATE_SINGLEPOST;
+					gState.state_label[0] = '\0';
 					gState.post_offset = 0;
 					drawTui( &gState );
 				}
@@ -718,6 +722,7 @@ resize:
 					if ( gState.opened_post ) free( gState.opened_post );
 					gState.opened_post = NULL;
 					gState.current_screen = STATE_LISTING;
+					gState.state_label[0] = '\0';
 					drawTui( &gState );
 				}
 				break;
@@ -733,6 +738,7 @@ resize:
 				else if ( gState.current_screen & UI_WRITEPOST )
 				{
 					gState.current_screen = STATE_WRITING;
+					gState.state_label[0] = '\0';
 					gState.buf_testo[0] = '\0';
 					gState.len_testo    = 0;
 					gState.buf_oggetto[0] = '\0';
@@ -746,6 +752,7 @@ resize:
 				if ( gState.current_screen == STATE_WRITING )
 				{
 					gState.current_screen = STATE_LISTING;
+					gState.state_label[0] = '\0';
 					printf( "\033[?25l" );
 					drawTui( &gState );
 				}

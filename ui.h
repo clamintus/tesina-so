@@ -29,37 +29,43 @@ enum screen_state : uint8_t {
 	STATE_ERROR      = 0
 };
 
+enum screen_layout : uint8_t {
+	LAYOUT_STANDARD,
+	LAYOUT_MOBILE
+};
+
 enum draft_state : uint8_t {
 	FIELD_OGGETTO,
 	FIELD_TESTO
 };
 
 typedef struct client_state {
-	enum screen_state current_screen;
-	Post 		  **cached_posts;
-	unsigned int      num_posts;
-	unsigned int	  loaded_page;
-	unsigned int      page_offset;
-	unsigned int	  loaded_posts;
-	unsigned int      selected_post;
-	Post		  *opened_post;
-	unsigned int	  post_lines;
-	unsigned int	  post_offset;
-	int		  more_lines;
-	enum draft_state  current_draft_field;
-	char              buf_oggetto[257];
-	char		  buf_testo[60001];
-	unsigned char	  len_oggetto;
-	unsigned int	  len_testo;
-	char 		  state_label[100];
-	unsigned long	  most_recent_post_shown;
+	enum screen_state  current_screen;
+	enum screen_layout current_layout;
+	Post 		   **cached_posts;
+	unsigned int       num_posts;
+	unsigned int	   loaded_page;
+	unsigned int       page_offset;
+	unsigned int	   loaded_posts;
+	unsigned int       selected_post;
+	Post		   *opened_post;
+	unsigned int	   post_lines;
+	unsigned int	   post_offset;
+	int		   more_lines;
+	enum draft_state   current_draft_field;
+	char               buf_oggetto[257];
+	char		   buf_testo[60001];
+	unsigned char	   len_oggetto;
+	unsigned int	   len_testo;
+	char 		   state_label[100];
+	unsigned long	   most_recent_post_shown;
 	
 	// Server characteristics
-	char		  board_title[257];
-	char		  server_addr[100];
-	char*		  user;
-	char*		  pass;
-	int		  auth_level;
+	char		   board_title[257];
+	char		   server_addr[100];
+	char*		   user;
+	char*		   pass;
+	int		   auth_level;
 	
 	// Commands
 	//int pagenav_enabled;
@@ -69,7 +75,7 @@ typedef struct client_state {
 	//int quit_enabled;
 } ClientState;
 
-int updateWinSize();
+int updateWinSize( ClientState *state );
 int drawTui( ClientState *state );
 //int drawTui_listView( ClientState *state );
 //int drawTui_readPost( ClientState *state );

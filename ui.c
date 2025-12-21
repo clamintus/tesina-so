@@ -6,6 +6,7 @@
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
+#include <sys/param.h>
 
 #include "types.h"
 #include "ui.h"
@@ -18,7 +19,7 @@ extern int post_limit;
 int max_posts_per_page;
 unsigned int max_post_lines;
 
-int updateWinSize()
+int updateWinSize( ClientState *state )
 {
 	if ( ioctl( 0, TIOCGWINSZ, &window ) == -1 )
 	{
@@ -26,7 +27,17 @@ int updateWinSize()
 		return 1;
 	}
 
-	max_posts_per_page = window.ws_row - 12;
+	if ( window.ws_col < 87 )
+	{
+		state->current_layout = LAYOUT_MOBILE;
+		max_posts_per_page = window.ws_row - 12;
+	}
+	else
+	{
+		state->current_layout = LAYOUT_STANDARD;
+		max_posts_per_page = window.ws_row - 12;
+	}
+
 	return 0;
 }
 
@@ -103,7 +114,7 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 	char* curline = curr;
 	char* curword = curr;
 
-	while ( *curr )
+	while ( curr - str < size && *curr )
 	{
 	      continue_outer:
 		//int has_blank = false;
@@ -114,7 +125,7 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 			break;
 
 	      nextword:
-		while ( curr - str != size && !isspace( *curr ) )
+		while ( curr - str < size && !isspace( *curr ) )
 		{
 			if ( *curr == '\0' || curr - str == size )
 			{
@@ -270,54 +281,117 @@ int draw_header( ClientState *state )
 
 int draw_footer( ClientState *state )
 {
-	draw_hline( window.ws_row - 6 );
-	printf( "\033[%d;5H", window.ws_row - 4 );
+	unsigned short ROW1, ROW2, ROWSTATE;
+
+	if ( state->current_layout == LAYOUT_STANDARD )
+	{
+		draw_hline( window.ws_row - 6 );
+		printf( "\033[%d;5H", window.ws_row - 4 );
+	}
 	
+	if ( state->current_layout == LAYOUT_MOBILE )
+	{
+		ROW1 = window.ws_row - 2;
+		ROW2 = window.ws_row;
+		ROWSTATE = window.ws_row - 3;
+	}
+	else
+	{
+		ROW1 = window.ws_row - 4;
+		ROW2 = window.ws_row - 2;
+		ROWSTATE = window.ws_row - 1;
+	}
+
 	if ( state->current_screen & UI_LISTNAV )
-		printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Naviga lista\033[%d;5H", window.ws_row - 2 );
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;4H🔼 " ANSIREV " K  J " ANSIRST " 🔽", ROW1 );
+		else
+			printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Naviga lista\033[%d;5H", ROW2 );
 
 	if ( state->current_screen & UI_TEXTNAV && state->post_lines > max_post_lines )
-		printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Scorri testo\033[%d;5H", window.ws_row - 2 );
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;4H🔼 " ANSIREV " K  J " ANSIRST " 🔽", ROW1 );
+		else
+			printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Scorri testo\033[%d;5H", ROW2 );
 
 	if ( state->current_screen & UI_PAGENAV && state->num_posts > post_limit && state->num_posts != ( unsigned int ) -1 )
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;4H⏪ %s%s ⏩", ROW1,
+							    state->loaded_page > 1 ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
+				                            state->loaded_page < ( state->num_posts - 1 ) / post_limit + 1 ?
+							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST );
+		else
 		printf( "%s  %s  Cambia pagina\033[%d;36H", state->loaded_page > 1 ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
 				                            state->loaded_page < ( state->num_posts - 1 ) / post_limit + 1 ?
 							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST,
-							    window.ws_row - 4 );
+							    ROW2 );
 
 	if ( state->current_screen & UI_READPOST )
-		printf( "\033[%d;36H" ANSIREV " ENTER " ANSIRST "  Leggi post\033[%d;36H", window.ws_row - 4, window.ws_row - 2 );
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;%dH" ANSIREV " ↵ " ANSIRST " 📖", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
+		else
+		printf( "\033[%d;36H" ANSIREV " ENTER " ANSIRST "  Leggi post\033[%d;36H", ROW1, ROW2 );
 
 	if ( state->current_screen & UI_WRITEPOST )
-		printf( ANSIREV " W " ANSIRST "  Scrivi post" );
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;%dH" ANSIREV " W " ANSIRST " 📝", ROW2, MAX( window.ws_col / 2 - 3, 21 ) );
+		else
+			printf( ANSIREV " W " ANSIRST "  Scrivi post" );
+
 	if ( state->current_screen & UI_SENDPOST )
-		printf( "\033[%d;9H" ANSIREV " ^X " ANSIRST "  Pubblica\033[%d;9H", window.ws_row - 4, window.ws_row - 2 );
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;4H" ANSIREV " ^X " ANSIRST " 📤\033[%d;4H", ROW1, ROW2 );
+		else	
+		printf( "\033[%d;9H" ANSIREV " ^X " ANSIRST "  Pubblica\033[%d;9H", ROW1, ROW2 );
 
 	if ( state->current_screen & UI_BACK )
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;4H" ANSIREV " %sB " ANSIRST " 🔙",
+					state->current_screen == STATE_WRITING ? ROW2 : ROW1,
+					state->current_screen == STATE_WRITING ? "^" : "" );
+		else			   
 		printf( ANSIREV " %sB " ANSIRST "  Torna indietro\033[%d;5H", state->current_screen == STATE_WRITING ? "^" : "",
-		     							      window.ws_row - 2 );
+		     							      ROW2 );
 
 	if ( state->current_screen == STATE_WRITING )
-		printf( "\033[%d;36H" ANSIREV " TAB " ANSIRST "  Cambia campo", window.ws_row - 4 );
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;%dH" ANSIREV " ⇥ " ANSIRST " 🔃", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
+		else
+		printf( "\033[%d;36H" ANSIREV " TAB " ANSIRST "  Cambia campo", ROW1 );
 	
 	if ( state->current_screen == STATE_LISTING )
-		printf( "\033[%d;63H" ANSIREV " R " ANSIRST "  Aggiorna\033[%d;63H", window.ws_row - 4, window.ws_row - 2 );
+		if ( state->current_layout != LAYOUT_MOBILE )
+			printf( "\033[%d;63H" ANSIREV " R " ANSIRST "  Aggiorna\033[%d;63H", ROW1, ROW2 );
 
 	if ( state->current_screen & UI_DELPOST && state->loaded_posts > 0 &&
 	     ( state->auth_level != 0 ||
 	       !strncmp( state->cached_posts[ state->selected_post ]->data,
 		         state->user,
 		         state->cached_posts[ state->selected_post ]->len_mittente ) ) )
-		printf( ANSIREV " D " ANSIRST "  Elimina post\033[%d;90H", window.ws_row - 2 );
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;%dH" ANSIREV " D " ANSIRST " 🗑️",
+					ROW2,
+					state->current_screen == STATE_LISTING ? MAX( window.ws_col - 9, 33 ) : 4 );
+		else
+		printf( ANSIREV " D " ANSIRST "  Elimina post\033[%d;90H", ROW1 );
 		
 	if ( state->current_screen != STATE_WRITING )
-		printf( "\033[%d;63H" ANSIREV " Q " ANSIRST "  Disconnetti ed esci", window.ws_row - 4 );
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;%dH" ANSIREV " Q " ANSIRST " 🚪", ROW1, MAX( window.ws_col - 9, 33 ) );
+		else
+		printf( "\033[%d;63H" ANSIREV " Q " ANSIRST "  Disconnetti ed esci", ROW1 );
 
-	printf( "\033[%d;2H\033[0K\033[%dG┃", window.ws_row - 1, window.ws_col );
+	if ( state->current_layout == LAYOUT_STANDARD )
+		printf( "\033[%d;2H\033[0K\033[%dG┃", ROWSTATE, window.ws_col );
+	else
+		printf( "\033[%d;1H\033[0K", ROWSTATE );
 	//draw_box();
 	
 	if ( state->state_label[0] != '\0' )
-		printf( "\033[%d;%dH" ANSIREV " %s " ANSIRST, window.ws_row - 1, window.ws_col - strlen( state->state_label ) - 3, state->state_label );
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;%dH" ANSIREV "%s" ANSIRST, ROWSTATE, MAX( (int)window.ws_col - strlen( state->state_label ), 1 ) );
+		else
+		printf( "\033[%d;%dH" ANSIREV " %s " ANSIRST, ROWSTATE, window.ws_col - strlen( state->state_label ) - 3, state->state_label );
 }
 
 int drawTui_listView( ClientState *state )
@@ -358,6 +432,7 @@ int drawTui_listView( ClientState *state )
 		//if ( strlen( oggetto ) > oggetto_trunc_pos ) oggetto[ oggetto_trunc_pos ] = '\0';	// tronca oggetto se più lungo di schermo
 		if ( post->len_oggetto &&
 		     post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
+		if ( oggetto_trunc_pos < 0 ) oggetto_trunc_pos = 0;
 
 		printf( "\033[%d;3H", 5 + i - state->page_offset );
 		printf( "%s %s%s %.*s %.*s%s", selected ? "*" : " ",
@@ -453,12 +528,13 @@ int drawTui_writePost( ClientState *state )
 	
 int drawTui( ClientState *state )
 {
-	if ( updateWinSize() )
+	if ( updateWinSize( state ) )
 		return 1;
 	//test
 	//window.ws_col = 50;
 	printf( "\033[2J" );	// Erase-in Display
-	draw_box();
+	if ( state->current_layout == LAYOUT_STANDARD )
+		draw_box();
 
 	if ( state->current_screen == STATE_LISTING )
 	{
