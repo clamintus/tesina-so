@@ -227,7 +227,7 @@ int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
 		memcpy( &curr_post, scanptr, POST_HEADER_SIZE );
 
 		size_t post_size = curr_post.len_mittente + curr_post.len_oggetto + curr_post.len_testo;
-		gState.cached_posts[ i ] = malloc( POST_HEADER_SIZE + post_size );
+		gState.cached_posts[ i ] = malloc( POST_HEADER_SIZE + post_size + 1 );
 
 		*gState.cached_posts[ i ] = curr_post;
 		memcpy( gState.cached_posts[ i ]->data, scanptr + POST_HEADER_SIZE, post_size );
@@ -541,11 +541,27 @@ oob:
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
+					if ( gState.num_posts )
+						gState.most_recent_post_shown = gState.cached_posts[ 0 ]->timestamp;
 					gState.current_screen = STATE_LISTING;
 					drawTui( &gState );
 				}
 				else if ( gState.current_screen & UI_READPOST && gState.selected_post < gState.loaded_posts )
 				{
+					Post *curr_post = gState.cached_posts[ gState.selected_post ];
+					if ( gState.opened_post ) free ( gState.opened_post );
+					uint16_t len_testo;
+					memcpy( &len_testo, &curr_post->len_testo, 2 );
+					size_t post_size = POST_HEADER_SIZE + curr_post->len_mittente + curr_post->len_oggetto + len_testo;
+					gState.opened_post = malloc( post_size );
+					if ( !gState.opened_post )
+					{
+						sprintf( gState.state_label, "Memoria piena!" );
+						drawTui( &gState );
+						break;
+					}
+					memcpy( gState.opened_post, curr_post, post_size );
+					gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
 					gState.current_screen = STATE_SINGLEPOST;
 					gState.post_offset = 0;
 					drawTui( &gState );
@@ -611,6 +627,7 @@ oob:
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
+					if ( gState.loaded_posts ) gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
 					gState.selected_post = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
@@ -635,6 +652,7 @@ oob:
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
+					if ( gState.loaded_posts ) gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
 					gState.selected_post = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
@@ -650,6 +668,8 @@ oob:
 				}
 				else if ( gState.current_screen & UI_BACK && gState.current_screen != STATE_WRITING )
 				{
+					if ( gState.opened_post ) free( gState.opened_post );
+					gState.opened_post = NULL;
 					gState.current_screen = STATE_LISTING;
 					drawTui( &gState );
 				}
@@ -843,7 +863,7 @@ oob:
 					msg_buf[2] = ( unsigned char )strlen( pass );
 					strcpy( msg_buf + 3, user );
 					strcpy( msg_buf + 3 + msg_buf[1], pass );
-					memcpy( msg_buf + 3 + msg_buf[1] + msg_buf[2], &gState.cached_posts[ gState.selected_post ]->id, 4 );
+					memcpy( msg_buf + 3 + msg_buf[1] + msg_buf[2], gState.current_screen == STATE_SINGLEPOST ? &gState.opened_post->id : &gState.cached_posts[ gState.selected_post ]->id, 4 );
 					msg_size = 3 + msg_buf[1] + msg_buf[2] + 4;
 					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
 					if ( ret )

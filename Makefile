@@ -1,6 +1,7 @@
 all: client server
 
-CFLAGS := 
+CFLAGS  := -pthread
+LDFLAGS := -pthread
 
 ifdef RELEASE
 	CFLAGS += -O2
@@ -14,15 +15,19 @@ else ifdef POSIX_MUTEX
 	CFLAGS += -DPOSIX_MUTEX
 endif
 
-ifdef DEBUG
+ifdef $(DEBUG)
 	CFLAGS += -DDEBUG
+endif
+ifeq ($(DEBUG),2)
+	CFLAGS += -fsanitize=address
+	LDFLAGS += -fsanitize=address
 endif
 
 client: client.o helpers.o ui.o
-	gcc -o client client.o helpers.o ui.o
+	gcc $(LDFLAGS) -o client client.o helpers.o ui.o
 
 server: server.o helpers.o
-	gcc -o server server.o helpers.o
+	gcc $(LDFLAGS) -o server server.o helpers.o
 
 client.o: client.c helpers.h types.h
 	gcc -c $(CFLAGS) client.c

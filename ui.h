@@ -41,6 +41,7 @@ typedef struct client_state {
 	unsigned int	  loaded_page;
 	unsigned int	  loaded_posts;
 	unsigned int      selected_post;
+	Post		  *opened_post;
 	unsigned int	  post_lines;
 	unsigned int	  post_offset;
 	int		  more_lines;
@@ -50,6 +51,7 @@ typedef struct client_state {
 	unsigned char	  len_oggetto;
 	unsigned int	  len_testo;
 	char 		  state_label[100];
+	unsigned long	  most_recent_post_shown;
 	
 	// Server characteristics
 	char		  board_title[257];

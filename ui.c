@@ -78,6 +78,7 @@ char *stringifyTimestamp( time_t timestamp )
 #define ANSIITA "\033[2m\033[3m"
 #define ANSIRST "\033[0m"
 #define ANSIDIS "\033[30m\033[100m"
+#define ANSINEW "\033[1m\033[3m\033[97m\033[5m"
 unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1, unsigned int skip )
 {
 	unsigned short x_len = x1 - x0 + 1;
@@ -344,22 +345,25 @@ int drawTui_listView( ClientState *state )
 		//char *oggetto = malloc( post->len_oggetto + 1 );
 		int64_t timestamp;
 		int selected = state->selected_post == i;
+		int is_new = post->timestamp > state->most_recent_post_shown && strncmp( post->data, state->user, post->len_mittente );
 
 		memcpy( &timestamp, &post->timestamp, 8 );
 		//strncpy( mittente, post->data, post->len_mittente );
 		//strncpy( oggetto, post->data + post->len_mittente, post->len_oggetto );
 		ora_post = stringifyTimestamp( (time_t)timestamp );
-		
+
 		int oggetto_trunc_pos = window.ws_col - 6 - 5 - 4 - post->len_mittente;
 		//if ( strlen( oggetto ) > oggetto_trunc_pos ) oggetto[ oggetto_trunc_pos ] = '\0';	// tronca oggetto se più lungo di schermo
 		if ( post->len_oggetto &&
 		     post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
 
 		printf( "\033[%d;3H", 5 + i );
-		printf( "%s %s %.*s %.*s", selected ? "*" : " ", ora_post, 
-								 post->len_mittente, post->data,
-								 oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
-								 					 ANSIITA "(nessun oggetto)" ANSIRST );
+		printf( "%s %s%s %.*s %.*s%s", selected ? "*" : " ",
+					       is_new ? ANSINEW : "", ora_post,
+								      post->len_mittente, post->data,
+								      oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
+								 					     ANSIITA "(nessun oggetto)" ANSIRST,
+		     			       is_new ? ANSIRST : "" );
 
 		//free( mittente );
 		//free( oggetto );
@@ -376,7 +380,8 @@ int drawTui_readPost( ClientState *state )
 
 	draw_header( state );
 
-	Post *curr_post = state->cached_posts[ state->selected_post ];
+	//Post *curr_post = state->cached_posts[ state->selected_post ];
+	Post *curr_post = state->opened_post;
 
 	//int l = 0;
 	//unsigned short padding_x = window.ws_col / 10;
