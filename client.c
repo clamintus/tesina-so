@@ -903,9 +903,14 @@ resize:
 				}
 				else if ( gState.current_screen & UI_DELPOST && 1 && gState.loaded_posts > 0 &&
 					  ( gState.auth_level != 0 ||
-				     	    !strncmp( gState.cached_posts[ gState.selected_post ]->data,
-						      user,
-						      gState.cached_posts[ gState.selected_post ]->len_mittente ) ) )
+				     	    ( ( gState.current_screen != STATE_SINGLEPOST &&
+						!strncmp( gState.cached_posts[ gState.selected_post ]->data,
+						          user,
+						          gState.cached_posts[ gState.selected_post ]->len_mittente ) ) ||
+					      ( gState.current_screen == STATE_SINGLEPOST &&
+					        !strncmp( gState.opened_post->data,
+						          user,
+						  	  gState.opened_post->len_mittente ) ) ) ) )
 				{
 					if ( gState.auth_level < 0 && reauth( msg_buf, &msg_size ) <= 0 )
 					{

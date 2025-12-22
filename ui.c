@@ -455,9 +455,14 @@ int draw_footer( ClientState *state )
 
 	if ( state->current_screen & UI_DELPOST && state->loaded_posts > 0 &&
 	     ( state->auth_level != 0 ||
-	       !strncmp( state->cached_posts[ state->selected_post ]->data,
-		         state->user,
-		         state->cached_posts[ state->selected_post ]->len_mittente ) ) )
+	       ( ( state->current_screen != STATE_SINGLEPOST &&
+		   !strncmp( state->cached_posts[ state->selected_post ]->data,
+		             state->user,
+		             state->cached_posts[ state->selected_post ]->len_mittente ) ) ||
+	         ( state->current_screen == STATE_SINGLEPOST &&
+		   !strncmp( state->opened_post->data,
+			     state->user,
+			     state->opened_post->len_mittente ) ) ) ) )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " D " ANSIRST " 🗑️",
 					ROW2,
