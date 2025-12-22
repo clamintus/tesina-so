@@ -395,7 +395,7 @@ int draw_footer( ClientState *state )
 			"\033[%d;1H\033[2K", ROW1, ROW2 );
 	}
 
-	if ( state->current_screen & UI_LISTNAV )
+	if ( state->current_screen & UI_LISTNAV && state->selected_post < state->loaded_posts )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;4H🔼 " ANSIREV " K  J " ANSIRST " 🔽", ROW1 );
 		else
@@ -419,7 +419,7 @@ int draw_footer( ClientState *state )
 							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST,
 							    ROW2 );
 
-	if ( state->current_screen & UI_READPOST )
+	if ( state->current_screen & UI_READPOST && state->selected_post < state->loaded_posts )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " ↵ " ANSIRST " 📖", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
 		else
