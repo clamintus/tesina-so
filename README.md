@@ -1,0 +1,13 @@
+# Tesina di Sistemi - Bacheca Elettronica
+-------------------
+- Pure C, nessuna libreria esterna
+- POSIX-compliant
+- Concorrente
+- Real-Time (notifiche TCP OOB)
+- Split-locked con 2 mutex/semafori
+- Database post robusto con Atomic Save
+- Configurabile a 2 o 3 livelli di privilegi
+	- admin: legge, scrive e cancella TUTTI i post
+	- utente: legge, scrive e cancella i suoi post
+	- (anonimo: legge)
+- TUI Responsive a 2 layout
