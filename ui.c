@@ -384,6 +384,14 @@ int draw_footer( ClientState *state )
 		ROWSTATE = window.ws_row - 1;
 	}
 
+	// nel layout grande funzionava bene, NON RISCHIO DI INCASINARLO
+	if ( state->current_layout != LAYOUT_STANDARD )
+	{
+		// pulisci righe
+		printf( "\033[%d;1H\033[2K"
+			"\033[%d;1H\033[2K", ROW1, ROW2 );
+	}
+
 	if ( state->current_screen & UI_LISTNAV )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;4H🔼 " ANSIREV " K  J " ANSIRST " 🔽", ROW1 );
