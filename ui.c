@@ -293,17 +293,17 @@ int draw_header( ClientState *state )
 		switch ( state->auth_level )
 		{
 			case 1:
-				sprintf( right_text + strlen( right_text ), "👑 \033[1m%s" ANSIRST, state->user );
+				sprintf( right_text + strlen( right_text ), "👑\033[1m%s" ANSIRST, state->user );
 				right_text_len = -8;
 				break;
 
 			case 0:
-				sprintf( right_text + strlen( right_text ), "👤 %s", state->user );
+				sprintf( right_text + strlen( right_text ), "👤%s", state->user );
 				right_text_len = 0;
 				break;
 
 			case -1:
-				sprintf( right_text + strlen( right_text ), "🫥 " ANSIITA "anon" ANSIRST );
+				sprintf( right_text + strlen( right_text ), "🫥" ANSIITA "anon" ANSIRST );
 				right_text_len = -12;
 				break;
 		}
@@ -557,7 +557,7 @@ int drawTui_readPost( ClientState *state )
 
 	const char* aut_label = state->current_layout == LAYOUT_MOBILE ? "✍️ " : "Autore: ";
 	const char* ogg_label = state->current_layout == LAYOUT_MOBILE ? "🪧 " : "Oggetto: ";
-	const char* dat_label = state->current_layout == LAYOUT_MOBILE ? "🕒 " : "Autore: ";
+	const char* dat_label = state->current_layout == LAYOUT_MOBILE ? "🕒 " : "Postato il: ";
 	int hdr_size = draw_header( state );
 	int ftr_size = draw_footer( state );
 
@@ -570,7 +570,7 @@ int drawTui_readPost( ClientState *state )
 
 	//int l = 0;
 	//unsigned short padding_x = window.ws_col / 10;
-	unsigned short padding_x = state->current_layout == LAYOUT_MOBILE ? 0 : 2;
+	unsigned short padding_x = state->current_layout == LAYOUT_MOBILE ? 0 : window.ws_col / 10;
 	unsigned short padding_y = 1;
 
 	//printf( "\033[5;%1$dH"

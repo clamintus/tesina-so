@@ -110,8 +110,11 @@ int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
 
 	while ( n_left )
 	{
-		if ( ( ret = recv( sockfd, msg_buf, n_left, 0 ) ) < 0 )
+		if ( ( ret = recv( sockfd, msg_buf, n_left, 0 ) ) <= 0 )
 		{
+			if ( !ret )
+				return -1;
+
 			if ( errno == EINTR )
 				ret = 0;
 			else
