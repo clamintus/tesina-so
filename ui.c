@@ -30,7 +30,7 @@ int updateWinSize( ClientState *state )
 	if ( window.ws_col < 87 )
 	{
 		state->current_layout = LAYOUT_MOBILE;
-		max_posts_per_page = window.ws_row - 6;
+		max_posts_per_page = window.ws_row - 5;
 	}
 	else
 	{
@@ -120,7 +120,8 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 	char* curline = curr;
 	char* curword = curr;
 
-	while ( curr - str < size && *curr )
+	while ( *curr )
+	//while ( curr - str < size && *curr )
 	{
 	      continue_outer:
 		//int has_blank = false;
@@ -131,7 +132,8 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 			break;
 
 	      nextword:
-		while ( curr - str < size && !isspace( *curr ) )
+		//while ( curr - str < size && !isspace( *curr ) )
+		while ( !isspace( *curr ) )
 		{
 			if ( *curr == '\0' || curr - str == size )
 			{
@@ -289,7 +291,7 @@ int draw_header( ClientState *state )
 
 	if ( state->current_layout == LAYOUT_MOBILE )
 	{
-		sprintf( right_text, "%u/%u - ", state->loaded_page, state->num_posts ? ( state->num_posts - 1 ) / post_limit + 1 : 1 );
+		sprintf( right_text, "%u/%u ", state->loaded_page, state->num_posts ? ( state->num_posts - 1 ) / post_limit + 1 : 1 );
 		switch ( state->auth_level )
 		{
 			case 1:
@@ -356,7 +358,8 @@ int draw_header( ClientState *state )
 			putchar( ' ' );
 	}
 	printf( "\033[%d;%dH%s\033[%d;%dH%s", row_hdr, 1 + col_off, left_text,
-					      row_hdr, window.ws_col - right_text_len - col_off + 3, right_text );
+					      row_hdr, window.ws_col - right_text_len - col_off + 1 + 
+					      ( state->current_layout == LAYOUT_MOBILE ? 2 : 0 ), right_text );
 
 	return state->current_layout == LAYOUT_MOBILE ? 1 : 3;
 }
@@ -436,12 +439,15 @@ int draw_footer( ClientState *state )
 
 	if ( state->current_screen & UI_BACK )
 		if ( state->current_layout == LAYOUT_MOBILE )
-			printf( "\033[%d;4H" ANSIREV " %sB " ANSIRST " 🔙",
+			printf( "\033[%d;%dH" ANSIREV " %sB " ANSIRST " 🔙",
 					state->current_screen == STATE_WRITING ? ROW2 : ROW1,
+					state->current_screen == STATE_SINGLEPOST ? MAX( window.ws_col / 2 - 3, 21 ) : 4,
 					state->current_screen == STATE_WRITING ? "^" : "" );
 		else			   
-		printf( ANSIREV " %sB " ANSIRST "  Torna indietro\033[%d;5H", state->current_screen == STATE_WRITING ? "^" : "",
-		     							      ROW2 );
+		printf( "\033[%d;%dH" ANSIREV " %sB " ANSIRST "  Torna indietro\033[%d;5H", ROW2,
+											    state->current_screen == STATE_SINGLEPOST ? 36 : 9,
+											    state->current_screen == STATE_WRITING ? "^" : "",
+		     							      		    ROW2 );
 
 	if ( state->current_screen == STATE_WRITING )
 		if ( state->current_layout == LAYOUT_MOBILE )
@@ -564,7 +570,7 @@ int drawTui_readPost( ClientState *state )
 	const char* ogg_label = state->current_layout == LAYOUT_MOBILE ? "🪧 " : "Oggetto: ";
 	const char* dat_label = state->current_layout == LAYOUT_MOBILE ? "🕒 " : "Postato il: ";
 	int hdr_size = draw_header( state );
-	int ftr_size = draw_footer( state );
+	int ftr_size = state->current_layout == LAYOUT_MOBILE ? 4 : 7;
 
 	//Post *curr_post = state->cached_posts[ state->selected_post ];
 	Post *curr_post = state->opened_post;
@@ -602,6 +608,8 @@ int drawTui_readPost( ClientState *state )
 
 	max_post_lines    = window.ws_row - 2 * padding_y - hdr_size - ftr_size;
 	state->more_lines = state->post_lines - state->post_offset > max_post_lines;
+
+	draw_footer( state );
 }
 
 int drawTui_writePost( ClientState *state )

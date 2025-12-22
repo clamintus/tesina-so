@@ -592,7 +592,7 @@ resize:
 					uint16_t len_testo;
 					memcpy( &len_testo, &curr_post->len_testo, 2 );
 					size_t post_size = POST_HEADER_SIZE + curr_post->len_mittente + curr_post->len_oggetto + len_testo;
-					gState.opened_post = malloc( post_size );
+					gState.opened_post = malloc( post_size + 1 );
 					if ( !gState.opened_post )
 					{
 						sprintf( gState.state_label, "Memoria piena!" );
