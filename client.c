@@ -519,6 +519,7 @@ oob:
 		if ( gResized )
 		{
 resize:
+			gState.post_offset = 0;		// per non incasinare il testo del post
 			updateWinSize( &gState );
 			drawTui( &gState );
 

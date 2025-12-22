@@ -357,6 +357,8 @@ int draw_header( ClientState *state )
 	}
 	printf( "\033[%d;%dH%s\033[%d;%dH%s", row_hdr, 1 + col_off, left_text,
 					      row_hdr, window.ws_col - right_text_len - col_off + 3, right_text );
+
+	return state->current_layout == LAYOUT_MOBILE ? 1 : 3;
 }
 
 int draw_footer( ClientState *state )
@@ -469,9 +471,12 @@ int draw_footer( ClientState *state )
 	
 	if ( state->state_label[0] != '\0' )
 		if ( state->current_layout == LAYOUT_MOBILE )
-			printf( "\033[%d;%dH" ANSIREV "%s" ANSIRST, ROWSTATE, MAX( (int)window.ws_col - strlen( state->state_label ), 1 ) );
+			printf( "\033[%d;%dH" ANSIREV "%s" ANSIRST, ROWSTATE, MAX( (int)window.ws_col - strlen( state->state_label ), 1 ),
+			     					    state->state_label );
 		else
 		printf( "\033[%d;%dH" ANSIREV " %s " ANSIRST, ROWSTATE, window.ws_col - strlen( state->state_label ) - 3, state->state_label );
+
+	return state->current_layout == LAYOUT_MOBILE ? 4 : 7;
 }
 
 int drawTui_listView( ClientState *state )
@@ -486,7 +491,7 @@ int drawTui_listView( ClientState *state )
 	draw_header( state );
 	draw_footer( state );
 
-	int y_off = state->current_layout == LAYOUT_MOBILE ? 2 : 4;
+	int y_off = state->current_layout == LAYOUT_MOBILE ? 1 : 4;
 	int x_off = state->current_layout == LAYOUT_MOBILE ? 0 : 3;
 
 	
@@ -542,72 +547,85 @@ int drawTui_readPost( ClientState *state )
 	//state->readpost_enabled = false;
 	//state->goback_enabled   = true;
 
-	draw_header( state );
+	const char* aut_label = state->current_layout == LAYOUT_MOBILE ? "✍️ " : "Autore: ";
+	const char* ogg_label = state->current_layout == LAYOUT_MOBILE ? "🪧 " : "Oggetto: ";
+	const char* dat_label = state->current_layout == LAYOUT_MOBILE ? "🕒 " : "Autore: ";
+	int hdr_size = draw_header( state );
+	int ftr_size = draw_footer( state );
 
 	//Post *curr_post = state->cached_posts[ state->selected_post ];
 	Post *curr_post = state->opened_post;
-
-	//int l = 0;
-	//unsigned short padding_x = window.ws_col / 10;
-	unsigned short padding_x = 1;
-	unsigned short padding_y = 1;
-
-	printf( "\033[5;%1$dHAutore: %3$.*2$s\033[6;%1$dHOggetto: %5$.*4$s", 2 + padding_x,
-									     curr_post->len_mittente, curr_post->data,
-									     curr_post->len_oggetto ? curr_post->len_oggetto : -1,
-									     curr_post->len_oggetto ? curr_post->data + curr_post->len_mittente :
-									     			      ANSIITA "(nessun oggetto)" ANSIRST );
 	char data_buf[20];
 	uint64_t time_buf;
 	memcpy( &time_buf, &curr_post->timestamp, 8 );
 	strftime( data_buf, 20, "%d/%m/%Y %H:%M:%S", localtime( ( time_t *)&time_buf ) );
-	printf( "\033[7;%dHPostato il: %s", 2 + padding_x, data_buf );
-	
-	//printf( "\033[7;%dHOffset: %u", 2 + padding_x, state->more_lines );
 
-	//printf( "\033[8;3H%s", curr_post->data + curr_post->len_mittente + curr_post->len_oggetto );
+	//int l = 0;
+	//unsigned short padding_x = window.ws_col / 10;
+	unsigned short padding_x = state->current_layout == LAYOUT_MOBILE ? 0 : 2;
+	unsigned short padding_y = 1;
+
+	//printf( "\033[5;%1$dH"
+	//	"Autore: %3$.*2$s"
+	//	"\033[6;%1$dH"
+	//	"Oggetto: %5$.*4$s", 1 + padding_x,
+	//								     curr_post->len_mittente, curr_post->data,
+	//								     curr_post->len_oggetto ? curr_post->len_oggetto : -1,
+	//								     curr_post->len_oggetto ? curr_post->data + curr_post->len_mittente :
+	//								     			      ANSIITA "(nessun oggetto)" ANSIRST );
+	printf( "\033[%d;%dH" "%s%.*s", 1 + hdr_size + padding_y, 1 + padding_x, aut_label, curr_post->len_mittente, curr_post->data );
+	printf( "\033[%d;%dH" "%s%.*s", 2 + hdr_size + padding_y, 1 + padding_x, ogg_label, curr_post->len_oggetto ? curr_post->len_oggetto : -1,
+						curr_post->len_oggetto ? curr_post->data + curr_post->len_mittente :
+					       								 ANSIITA "(nessun oggetto)" ANSIRST );
+	printf( "\033[%d;%dH" "%s%s",   3 + hdr_size + padding_y, 1 + padding_x, dat_label, data_buf );
+
 	state->post_lines = printWrapped( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto,
 					  curr_post->len_testo,
-					   	      2 + padding_x,
-					   	      9 + padding_y,
-					  window.ws_col - padding_x - 1,
-					  window.ws_row - padding_y - 8,
-					  state->post_offset            );
+					   	      1 + padding_x,
+					   5 + hdr_size + padding_y,
+			       window.ws_col 		- padding_x,
+			       window.ws_row - ftr_size - padding_y,
+			       state->post_offset                    );
 
-	max_post_lines    = window.ws_row - 2 * padding_y - 16;
+	max_post_lines    = window.ws_row - 2 * padding_y - hdr_size - ftr_size;
 	state->more_lines = state->post_lines - state->post_offset > max_post_lines;
-
-	draw_footer( state );
 }
 
 int drawTui_writePost( ClientState *state )
 {
-	draw_header( state );
-	draw_footer( state );
+	int hdr_size = draw_header( state );
+	int ftr_size = draw_footer( state );
+
+	const char* oggetto_text = "Oggetto: ";
+	int oggetto_x = state->current_layout == LAYOUT_MOBILE ? 1 : 3;
+	int oggetto_y = state->current_layout == LAYOUT_MOBILE ? 3 : 5;
+	int testo_pad_x = state->current_layout == LAYOUT_MOBILE ? 0 : 2;
+	int testo_pad_y = state->current_layout == LAYOUT_MOBILE ? 5 : 9;
 
 	// Come prima cosa riattiviamo il cursore: deve indicare all'utente dove sta scrivendo
-	printf( "\033[5;3HOggetto: \033[?25h" );
+	printf( "\033[%d;%dH%s\033[?25h", oggetto_y, oggetto_x, oggetto_text );
 	
 	if ( state->current_draft_field == FIELD_TESTO )	// per lasciare il cursore sull'oggetto alla fine
 	{
-		if ( state->len_oggetto > window.ws_col - 11 - 3 )
-			printf( "...%s", state->buf_oggetto + ( state->len_oggetto - ( window.ws_col - 11 - 3 ) + 3 ) );
+		if ( state->len_oggetto > window.ws_col - 11 - oggetto_x )
+			printf( "...%s", state->buf_oggetto + ( state->len_oggetto - ( window.ws_col - 11 - oggetto_x ) + 3 ) );
 		else
 			printf( "%s", state->buf_oggetto );
 	}
 
-	printWrapped( state->buf_testo,				// stringa
-		      state->len_testo,				// lunghezza
-		      3, 8,					// x0 y0
-		      window.ws_col - 2, window.ws_row - 9,	// x1 y1
-		      -1				    );  // vogliamo sempre l'ultima parte del testo
+	printWrapped( state->buf_testo,						// stringa
+		      state->len_testo,						// lunghezza
+		      oggetto_x, oggetto_y + 2,					// x0 y0
+		      window.ws_col - testo_pad_x, window.ws_row - testo_pad_y,	// x1 y1
+		      -1				    );  		// vogliamo sempre l'ultima parte del testo
 
 	if ( state->current_draft_field == FIELD_OGGETTO )
 	{
-		if ( state->len_oggetto > window.ws_col - 11 - 3 )
-			printf( "\033[5;12H...%s", state->buf_oggetto + ( state->len_oggetto - ( window.ws_col - 11 - 3 ) + 3 ) );
+		if ( state->len_oggetto > window.ws_col - 11 - oggetto_x )
+			printf( "\033[%d;%dH...%s", oggetto_y, oggetto_x + strlen( oggetto_text ),
+						    state->buf_oggetto + ( state->len_oggetto - ( window.ws_col - 11 - oggetto_x ) + 3 ) );
 		else
-			printf( "\033[5;12H%s", state->buf_oggetto );
+			printf( "\033[%d;%dH%s", oggetto_y, oggetto_x + strlen( oggetto_text ), state->buf_oggetto );
 	}
 }
 
