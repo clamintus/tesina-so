@@ -498,7 +498,24 @@ int main( int argc, char *argv[] )
 		{
 oob:
 			// handle OOB message...
-			//printf( "\a" );
+			char buf;
+			int oob_ret;
+
+			oob_ret = recv( s_sock, buf, 1, MSG_OOB );
+			if ( oob_ret <= 0 )
+			{
+				if ( oob_ret == -1 )
+					warn( "ATTENZIONE: recv fallita nella gestione della notifica OOB!" );
+
+				else if ( oob_ret == 0 )
+				{
+					gState.current_screen = STATE_ERROR;
+					drawError( "Connessione col server persa." );
+					while( getchar() != '\n' );
+					exitProgram( EXIT_FAILURE );
+				}
+			}
+
 			unsigned int old_posts = gState.num_posts;
 
 			if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
