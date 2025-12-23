@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
-#include <termios.h>
+#ifndef __SWITCH__
+ #include <termios.h>
+#endif
 #include <err.h>
 #include <string.h>
 #include <time.h>
@@ -10,6 +12,10 @@
 
 #include "types.h"
 #include "ui.h"
+
+#ifdef __SWITCH__
+#include "switchport.h"
+#endif
 
 #define CUP(x,y) "\033[y;xH"
 
@@ -21,6 +27,7 @@ unsigned int max_post_lines;
 
 int updateWinSize( ClientState *state )
 {
+#ifndef __SWITCH__
 	if ( ioctl( 0, TIOCGWINSZ, &window ) == -1 )
 	{
 		warn( "updateWinSize: ioctl error" );
@@ -37,6 +44,12 @@ int updateWinSize( ClientState *state )
 		state->current_layout = LAYOUT_STANDARD;
 		max_posts_per_page = window.ws_row - 12;
 	}
+#else
+	PrintConsole *switch_console = consoleGetDefault();
+	
+	window.ws_col = switch_console->windowWidth;
+	window.ws_row = switch_console->windowHeight;
+#endif
 
 	return 0;
 }

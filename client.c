@@ -10,7 +10,9 @@
 #include <string.h>
 #include <errno.h>
 #include <err.h>
+#ifndef __SWITCH__
 #include <termios.h>
+#endif
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -19,9 +21,29 @@
 #include "helpers.h"
 #include "ui.h"
 
+#ifdef __SWITCH__
+#include <switch.h>
+#include "switchport.h"
+#endif
+
+#ifdef __SWITCH__
+ #define _fflush( stdout ) { fflush( stdout ); consoleUpdate( NULL ); }
+ #define _exit( eval ) { consoleExit( NULL ); exit ( eval ); }
+#else
+ #define _fflush( stdout ) fflush( stdout )
+ #define _exit( eval ) exit( eval )
+#endif
+
 int   s_sock;
 //Post *gLoadedPosts[10] = { 0 };
 ClientState gState;
+
+#ifdef __SWITCH__
+PadState gPad;
+PadRepeater gPadRepeater;
+SwkbdConfig gSwkbd;
+#endif
+
 volatile sig_atomic_t gNewDataAvailable = 0;
 volatile sig_atomic_t gResized = 0;
 
@@ -40,6 +62,7 @@ extern struct winsize window;
  *  - main menu
  */
 
+#ifndef __SWITCH__
 void oob_handler( int sig )
 {
 	gNewDataAvailable = 1;
@@ -49,6 +72,7 @@ void resize_handler( int sig )
 {
 	gResized = 1;
 }
+#endif
 
 int parseCmdLine( int argc, char *argv[], char **server_addr, int *server_port )
 {
@@ -58,7 +82,7 @@ int parseCmdLine( int argc, char *argv[], char **server_addr, int *server_port )
 	{
 esci:
 		printf( "Sintassi: %s [indirizzo] [porta]\n", argv[0] );
-		exit( 1 );
+		_exit( 1 );
 	}
 
 	*server_addr = argv[1];
@@ -185,7 +209,11 @@ void exitProgram( int exit_code )
 
 	setTerminalMode( TERM_CANON );
 	printf( "\033[?25h" );	// show cursor
-	exit( exit_code );
+#ifdef __SWITCH__
+	consoleExit( NULL );
+#else
+	_exit( exit_code );
+#endif
 }
 
 int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
@@ -260,7 +288,7 @@ int reauth( unsigned char* msg_buf, size_t* msg_size )
 	int ret;
 
 	printf( "\033[2J\033[1;1HOccorre l'autenticazione per continuare.\n\n\033[?25h" );
-	fflush( stdout );
+	_fflush( stdout );
 	setTerminalMode( TERM_CANON );
 	
 	if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
@@ -301,6 +329,7 @@ int main( int argc, char *argv[] )
 	size_t		    msg_size;
 	struct sockaddr_in  servaddr;
 	struct hostent     *he;
+#ifndef __SWITCH__
 	struct sigaction    sa = { 0 };
 	sigset_t	    sigset;
 
@@ -315,13 +344,47 @@ int main( int argc, char *argv[] )
 	sigaction( SIGINT, &sa, NULL );
 	sigaction( SIGPIPE, &sa, NULL );
 
+	parseCmdLine( argc, argv, &s_addr, &s_port );
+#else
+	consoleInit( NULL );
+	padConfigureInput( 1, HidNpadStyleSet_NpadStandard );
+
+	padInitializeDefault( &gPad );
+	padRepeaterInitialize( &gPadRepeater, 60, 4 );
+
+	swkbdCreate( &gSwkbd, 0 );
+	swkbdConfigMakePresetDefault( &gSwkbd );
+
+	
+	// Otteniamo indirizzo e porta dall'utente
+	
+	char address_buf[ 4097 ];
+	char port_buf[ 10 ];
+
+	//if ( getValidInput( address_buf, 4097, "Inserisci l'indirizzo del server" ) == -1 )
+	//	_exit( EXIT_FAILURE );
+	//if ( getValidInput( port_buf, 10, "Inserisci la porta" ) == -1 )
+	//	_exit( EXIT_FAILURE );
+	sprintf( address_buf, "192.168.1.130" );
+	sprintf( port_buf, "3000" );
+
+	char *endptr;
+
+	s_addr = address_buf;
+	s_port = strtol( port_buf, &endptr, 10 );
+	if ( *endptr != '\0' )
+		_exit( 1 );
+
+
+#endif
+
+
 	gState.current_screen = STATE_INTRO;
 
-	parseCmdLine( argc, argv, &s_addr, &s_port );
 	if ( s_port < 0 || s_port > 65535 )
 	{
 		fprintf( stderr, "client: Numero di porta non valido.\n" );
-		exit( EXIT_FAILURE );
+		_exit( EXIT_FAILURE );
 	}
 
 
@@ -335,7 +398,7 @@ int main( int argc, char *argv[] )
 	if ( fb == NULL )
 		err( EXIT_FAILURE, "client: Impossibile allocare memoria per il framebuffer" );
 
-	fflush( stdout );
+	_fflush( stdout );
 	if ( setvbuf( stdin, NULL, _IONBF, 0 ) )
 		warn( "client: Impossibile impostare l'input non bufferizzato" );
 	if ( setvbuf( stdout, fb, _IOFBF, window.ws_row * window.ws_col ) )
@@ -349,22 +412,23 @@ int main( int argc, char *argv[] )
 	if ( !inet_aton( s_addr, &servaddr.sin_addr ) )
 	{
 		printf( "Risoluzione di %s... ", s_addr );
-		fflush( stdout );
+		_fflush( stdout );
 
 		if ( ( he = gethostbyname( s_addr ) ) == NULL )
 		{
 			printf( "fallita.\n" );
-			exit( EXIT_FAILURE );
+			_exit( EXIT_FAILURE );
 		}
 
 		servaddr.sin_addr = *( struct in_addr *)he->h_addr_list[0];
 		printf( "%s\n", inet_ntoa( servaddr.sin_addr ) );
-		fflush( stdout );
+		_fflush( stdout );
 	}
 
 
 	/* Connessione al server della bacheca */
 
+	_exit(0);
 	if ( ( s_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 		err( EXIT_FAILURE, "client: Errore nella creazione della socket" );
 
@@ -372,7 +436,7 @@ int main( int argc, char *argv[] )
 	servaddr.sin_port   = htons( (unsigned short int)s_port );
 
 	printf( "Connessione a %s:%d...\n", inet_ntoa( servaddr.sin_addr ), s_port );
-	fflush( stdout );
+	_fflush( stdout );
 
 	if ( connect( s_sock, (struct sockaddr *)&servaddr, sizeof( servaddr ) ) < 0 )
 		err( EXIT_FAILURE, "client: impossibile connettersi al server" );
@@ -386,8 +450,10 @@ int main( int argc, char *argv[] )
 	if ( setsockopt( s_sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof( struct timeval ) ) == -1 )
 		warn( "client: Impossibile impostare il timeout sulla socket" );
 
+#ifndef __SWITCH__
 	// Ci registriamo per gestire SIGURG
 	fcntl( s_sock, F_SETOWN, getpid() );
+#endif
 
 	
 	/* Main loop */
@@ -395,7 +461,7 @@ int main( int argc, char *argv[] )
 #ifdef DEBUG
 	printf( "Connessione stabilita.\n\n" );
 	printf( "Indirizzo: %s\tPorta: %d\n", s_addr, s_port );
-	fflush( stdout );
+	_fflush( stdout );
 #endif
 
 	int ret;
@@ -411,17 +477,17 @@ int main( int argc, char *argv[] )
 	{
 		setTerminalMode( TERM_CANON );
 		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", argv[1] );
-		fflush( stdout );
+		_fflush( stdout );
 
 		while (1)
 		{
 			int len_user, len_pass;
 
 			if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
-				exit( EXIT_FAILURE );
+				_exit( EXIT_FAILURE );
 			setTerminalMode( TERM_CANON_NOECHO );
 			if ( ( len_pass = getValidInput( pass, 256, "Password: " ) ) < 0 )
-				exit( EXIT_FAILURE );
+				_exit( EXIT_FAILURE );
 			setTerminalMode( TERM_CANON );
 
 			msg_buf[0] = CLI_LOGIN;
@@ -434,8 +500,8 @@ int main( int argc, char *argv[] )
 			if ( SendAndGetResponse( s_sock, msg_buf, &msg_size, 0 ) < 0 )
 			{
 				printf( "Connessione persa.\n" );
-				fflush( stdout );
-				exit( EXIT_FAILURE );
+				_fflush( stdout );
+				_exit( EXIT_FAILURE );
 			}
 
 			if ( *msg_buf == SERV_WELCOME )
@@ -445,7 +511,7 @@ int main( int argc, char *argv[] )
 			}
 
 			printf( "\nCredenziali errate, riprova.\n" );
-			fflush( stdout );
+			_fflush( stdout );
 		}
 	}
 	else
@@ -469,7 +535,7 @@ int main( int argc, char *argv[] )
 
 	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %s\n", argv[1], board_title, n_posts, server_time_str_buf );
 	printf( "\nInvio) Leggi i post\n    q) Esci\n\n" );
-	fflush( stdout );
+	_fflush( stdout );
 
 	setTerminalMode( TERM_RAW );
 
@@ -492,7 +558,11 @@ int main( int argc, char *argv[] )
 	for ( int i = 0; i < post_limit; i++ )
 		gState.cached_posts[ i ] = NULL;
 
+#ifdef __SWITCH__
+	while( appletMainLoop() )
+#else
 	while (1)
+#endif
 	{
 		if ( gNewDataAvailable )
 		{
@@ -526,12 +596,15 @@ resize:
 			gResized = 0;
 		}
 
-		//stdio mi ignora i segnali, sono costretto a fare così
-		fd_set fdset;
-		FD_ZERO( &fdset );
-		FD_SET( STDIN_FILENO, &fdset );
+		int action = 0;
 
-		if ( select( STDIN_FILENO+1, &fdset, NULL, NULL, NULL ) == -1 )
+#ifndef __SWITCH__
+		//stdio mi ignora i segnali, sono costretto a fare così
+		fd_set input_set;
+		FD_ZERO( &input_set );
+		FD_SET( STDIN_FILENO, &input_set );
+
+		if ( select( STDIN_FILENO+1, &input_set, NULL, NULL, NULL ) == -1 )
 		{
 			if ( errno == EINTR )
 			{
@@ -548,9 +621,54 @@ resize:
 
 			warn( "Errore nella select()" );
 		}
-					
+		
 		// La select() ha ritornato, getchar() è garantita non bloccante ora perché abbiamo i dati in input
-		int action = getchar();
+		action = getchar();
+#else
+		fd_set oob_set;
+		FD_ZERO( &oob_set );
+		FD_SET( s_sock, &oob_set );
+
+		struct timeval tv;
+		tv.tv_sec  = 0;
+		tv.tv_usec = 0;
+
+		// La Switch non rileva gli input con select()!
+		if ( select( s_sock+1, NULL, NULL, &oob_set, &tv ) == -1 )
+			_exit( EXIT_FAILURE );
+
+
+		// gestiamo qui quello che su Linux gestivamo con i segnali
+
+		if ( FD_ISSET( s_sock, &oob_set ) )
+			goto oob;
+
+		// ora possiamo gestire l'input della Switch
+
+		padUpdate( &gPad );
+		padRepeaterUpdate( &gPadRepeater, padGetButtons( &gPad ) );
+
+		u64 actions = padRepeaterGetButtons( &gPadRepeater );
+		if ( actions & HidNpadButton_AnyUp )
+			action = 'k';
+		if ( actions & HidNpadButton_AnyDown )
+			action = 'j';
+		if ( ( actions & HidNpadButton_AnyLeft ) || ( actions & HidNpadButton_L ) )
+			action = 'h';
+		if ( ( actions & HidNpadButton_AnyRight ) || ( actions & HidNpadButton_R ) )
+			action = 'l';
+		if ( actions & HidNpadButton_A )
+			action = '\n';
+		if ( actions & HidNpadButton_Y )
+			action = 'd';
+		if ( actions & HidNpadButton_B )
+			action = 'b';
+		if ( actions & HidNpadButton_Plus )
+			action = 'q';
+#endif
+
+		if ( action == 0 )
+			continue;
 
 		if ( action == EOF )
 			exitProgram( EXIT_FAILURE );

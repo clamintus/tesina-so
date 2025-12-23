@@ -2,12 +2,46 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <sys/socket.h>
 #include <arpa/inet.h>
-#include <termios.h>
+#ifndef __SWITCH__
+ #include <termios.h>
+ #include <endian.h>
+#else
+ #include <sys/endian.h>
+#endif
 #include "helpers.h"
 #include "types.h"
+#ifdef __SWITCH__
+#include "switchport.h"
 
+extern SwkbdConfig gSwkbd;
+#endif
+
+#ifndef __SWITCH__
 struct termios gOldTerminal;
+
+void setTerminalMode( enum terminal_mode mode )
+{
+	struct termios tmp_term;
+
+	tcgetattr( 0, &tmp_term );
+
+	gOldTerminal = tmp_term;
+	if      ( mode == TERM_RAW )          tmp_term.c_lflag &= ~ICANON & ~ECHO;
+	else if ( mode == TERM_CANON )        tmp_term.c_lflag |= ICANON | ECHO;
+	else if ( mode == TERM_CANON_NOECHO ) tmp_term.c_lflag &= ~ECHO;
+	tcsetattr( 0, TCSANOW, &tmp_term );
+}
+
+void restoreTerminal( void )
+{
+	tcsetattr( 0, TCSANOW, &gOldTerminal );
+}
+#else
+void setTerminalMode( enum terminal_mode mode ) {}
+void restoreTerminal( void ) {}
+#endif
 
 uint16_t conv_u16( void* u16_addr, enum conv_type to_what )
 {
@@ -44,6 +78,14 @@ uint64_t conv_u64( void* u64_addr, enum conv_type to_what )
 	
 int getValidInput( char* dest, int max_size, const char* prompt )
 {
+#ifdef __SWITCH__
+	swkbdConfigSetHeaderText( &gSwkbd, prompt );
+
+	if ( !R_SUCCEEDED( swkbdShow( &gSwkbd, dest, max_size ) ) )
+		return -1;
+
+	return 0;
+#else
 	int length;
 
 	while (1)
@@ -68,6 +110,7 @@ int getValidInput( char* dest, int max_size, const char* prompt )
 	dest[ --length ] = '\0';
 
 	return length;
+#endif
 }
 
 ssize_t getPostSize( Post *post )
@@ -127,20 +170,3 @@ int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
 	return len;
 }
 
-void setTerminalMode( enum terminal_mode mode )
-{
-	struct termios tmp_term;
-
-	tcgetattr( 0, &tmp_term );
-
-	gOldTerminal = tmp_term;
-	if      ( mode == TERM_RAW )          tmp_term.c_lflag &= ~ICANON & ~ECHO;
-	else if ( mode == TERM_CANON )        tmp_term.c_lflag |= ICANON | ECHO;
-	else if ( mode == TERM_CANON_NOECHO ) tmp_term.c_lflag &= ~ECHO;
-	tcsetattr( 0, TCSANOW, &tmp_term );
-}
-
-void restoreTerminal( void )
-{
-	tcsetattr( 0, TCSANOW, &gOldTerminal );
-}
