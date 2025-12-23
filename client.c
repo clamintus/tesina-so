@@ -571,7 +571,7 @@ oob:
 			char buf;
 			int oob_ret;
 
-			oob_ret = recv( s_sock, buf, 1, MSG_OOB );
+			oob_ret = recv( s_sock, &buf, 1, MSG_OOB );
 			if ( oob_ret <= 0 )
 			{
 				if ( oob_ret == -1 )
