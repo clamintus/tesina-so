@@ -84,7 +84,7 @@ int getValidInput( char* dest, int max_size, const char* prompt )
 	if ( !R_SUCCEEDED( swkbdShow( &gSwkbd, dest, max_size ) ) )
 		return -1;
 
-	return 0;
+	return strlen( dest );
 #else
 	int length;
 

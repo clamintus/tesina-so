@@ -49,6 +49,10 @@ int updateWinSize( ClientState *state )
 	
 	window.ws_col = switch_console->windowWidth;
 	window.ws_row = switch_console->windowHeight;
+	state->current_layout = LAYOUT_MOBILE;
+	max_posts_per_page = window.ws_row - 5;
+	//state->current_layout = LAYOUT_STANDARD;
+	//max_posts_per_page = window.ws_row - 12;
 #endif
 
 	return 0;
@@ -56,28 +60,48 @@ int updateWinSize( ClientState *state )
 
 void draw_box()
 {
+#ifdef __SWITCH__
+	const char* US = "\xc9";
+	const char* UD = "\xbb";
+	const char* DS = "\xc8";
+	const char* DD = "\xbc";
+	const char* VL = "\xba";
+	const char* HL = "\xcd";
+#else
+	const char* US = "┏";
+	const char* UD = "┓";
+	const char* DS = "┗";
+	const char* DD = "┛";
+	const char* VL = "┃";
+	const char* HL = "━";
+#endif
 	for ( unsigned short y = 1; y < window.ws_row; y++ )
-		printf( "\033[%d;1H┃\033[%d;%dH┃", y, y, window.ws_col );
+		printf( "\033[%d;1H%s\033[%d;%dH%s", y, VL, y, window.ws_col, VL );
 	for ( unsigned short x = 1; x < window.ws_col; x++ )
-		printf( "\033[1;%dH━\033[%d;%dH━", x, window.ws_row, x );
-	printf( "\033[1;1H┏"
-		"\033[1;%dH┓"
-		"\033[%d;1H┗"
-		"\033[%d;%dH┛", window.ws_col, window.ws_row, window.ws_row, window.ws_col );
+		printf( "\033[1;%dH%s\033[%d;%dH%s", x, HL, window.ws_row, x, HL );
+	printf( "\033[1;1H%s"
+		"\033[1;%dH%s"
+		"\033[%d;1H%s"
+		"\033[%d;%dH%s", US, window.ws_col, UD, window.ws_row, DS, window.ws_row, window.ws_col, DD );
 }
 
 void draw_hline2( int row )
 {
+#ifdef __SWITCH__
+	const char* HL2 = "\xc4";
+#else
+	const char* HL2 = "─";
+#endif
 	if ( row == 1 || row == window.ws_row ) return;
 
 	for ( unsigned short x = 0; x < window.ws_col; x++ )
-		printf( "\033[%d;%dH─", row, x );
+		printf( "\033[%d;%dH%s", row, x, HL2 );
 }
 
 void draw_hline( int row )
 {
 	draw_hline2( row );
-	printf( "\033[%d;1H┠\033[%d;%dH┨", row, row, window.ws_col );
+	//printf( "\033[%d;1H┠\033[%d;%dH┨", row, row, window.ws_col );
 }
 
 
@@ -688,14 +712,14 @@ int drawTui( ClientState *state )
 		drawTui_writePost( state );
 	}
 
-	fflush( stdout );
+	_fflush( stdout );
 }
 
 int drawError( char *error_msg )
 {
 	printf( "\033[2J\033[H%s", error_msg );
 	
-	fflush( stdout );
+	_fflush( stdout );
 }
 
 

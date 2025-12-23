@@ -5,6 +5,8 @@
 #include <errno.h>
 #include <switch.h>
 
+#include "switchport.h"
+
 #define MAXSIZE 1024
 
 extern PadState gPad;
@@ -18,7 +20,8 @@ void _warn( const char* fmt, va_list ap )
 	sprintf( error, ": %s\n", strerror( errno ) );
 	strcat( buf, error );
 
-	fprintf( stderr, buf );
+	fprintf( stdout, buf );
+	_fflush( stdout );
 }
 
 void warn( const char* fmt, ... )
@@ -40,6 +43,9 @@ void err( int eval, const char* fmt, ... )
 	{
 		padUpdate( &gPad );
 		if ( padGetButtons( &gPad ) & HidNpadButton_Plus )
+		{
 			consoleExit( NULL );
+			_exit( eval );
+		}
 	}
 }

@@ -24,12 +24,10 @@
 #ifdef __SWITCH__
 #include <switch.h>
 #include "switchport.h"
+#include "font.h"
 #endif
 
-#ifdef __SWITCH__
- #define _fflush( stdout ) { fflush( stdout ); consoleUpdate( NULL ); }
- #define _exit( eval ) { consoleExit( NULL ); exit ( eval ); }
-#else
+#ifndef _fflush
  #define _fflush( stdout ) fflush( stdout )
  #define _exit( eval ) exit( eval )
 #endif
@@ -37,6 +35,9 @@
 int   s_sock;
 //Post *gLoadedPosts[10] = { 0 };
 ClientState gState;
+
+unsigned char msg_buf[655360];
+size_t msg_size;
 
 #ifdef __SWITCH__
 PadState gPad;
@@ -325,8 +326,6 @@ int main( int argc, char *argv[] )
 	char 		    user[256];
 	char 		    pass[256];
 	int  		    auth_level = -1;		/* 1 amministratore, 0: utente standard, -1: anonimo */
-	unsigned char  	    msg_buf[655360];
-	size_t		    msg_size;
 	struct sockaddr_in  servaddr;
 	struct hostent     *he;
 #ifndef __SWITCH__
@@ -347,10 +346,12 @@ int main( int argc, char *argv[] )
 	parseCmdLine( argc, argv, &s_addr, &s_port );
 #else
 	consoleInit( NULL );
+	consoleDebugInit( debugDevice_CONSOLE );
 	padConfigureInput( 1, HidNpadStyleSet_NpadStandard );
 
 	padInitializeDefault( &gPad );
 	padRepeaterInitialize( &gPadRepeater, 60, 4 );
+	socketInitializeDefault();
 
 	swkbdCreate( &gSwkbd, 0 );
 	swkbdConfigMakePresetDefault( &gSwkbd );
@@ -404,6 +405,19 @@ int main( int argc, char *argv[] )
 	if ( setvbuf( stdout, fb, _IOFBF, window.ws_row * window.ws_col ) )
 		warn( "client: Impossibile impostare l'output bufferizzato" );
 
+#ifdef __SWITCH__
+	// Impostazione del font (per disegnare le ANSI box)
+	ConsoleFont cp437_font;
+	cp437_font.gfx         = OLDSCHOOL_MODEL30_16;
+	cp437_font.asciiOffset = 0;
+	cp437_font.numChars    = 256;
+	cp437_font.tileWidth   = 4;
+	cp437_font.tileHeight  = 8;
+
+	PrintConsole *console = consoleGetDefault();
+	consoleSetFont( console, &cp437_font );
+#endif
+
 
 	/* Risoluzione del nome host (se necessaria) */
 
@@ -428,7 +442,6 @@ int main( int argc, char *argv[] )
 
 	/* Connessione al server della bacheca */
 
-	_exit(0);
 	if ( ( s_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 		err( EXIT_FAILURE, "client: Errore nella creazione della socket" );
 
@@ -476,7 +489,7 @@ int main( int argc, char *argv[] )
 	if ( *msg_buf == SERV_AUTHENTICATE )
 	{
 		setTerminalMode( TERM_CANON );
-		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", argv[1] );
+		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", s_addr );
 		_fflush( stdout );
 
 		while (1)
@@ -533,7 +546,7 @@ int main( int argc, char *argv[] )
 	strftime( server_time_str_buf, 20, "%d/%m/%Y %H:%M:%S", localtime( ( time_t *)&server_time ) );
 	sprintf( board_title, msg_buf[12] ? " (%.*s)" : "", msg_buf[12], msg_buf + 13 );
 
-	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %s\n", argv[1], board_title, n_posts, server_time_str_buf );
+	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %s\n", s_addr, board_title, n_posts, server_time_str_buf );
 	printf( "\nInvio) Leggi i post\n    q) Esci\n\n" );
 	_fflush( stdout );
 
@@ -547,7 +560,7 @@ int main( int argc, char *argv[] )
 	gState.selected_post = 0;
 	*gState.state_label = '\0';
 	strncpy( gState.board_title, msg_buf + 13, msg_buf[12] + 1 );
-	strncpy( gState.server_addr, argv[1], 100 );
+	strncpy( gState.server_addr, s_addr, 100 );
 	gState.user = user;
 	gState.pass = pass;
 	gState.auth_level = auth_level;
@@ -665,7 +678,7 @@ resize:
 		padUpdate( &gPad );
 		padRepeaterUpdate( &gPadRepeater, padGetButtons( &gPad ) );
 
-		u64 actions = padRepeaterGetButtons( &gPadRepeater );
+		u64 actions = padRepeaterGetButtons( &gPadRepeater ) | padGetButtonsDown( &gPad );
 		if ( actions & HidNpadButton_AnyUp )
 			action = 'k';
 		if ( actions & HidNpadButton_AnyDown )
@@ -685,7 +698,12 @@ resize:
 #endif
 
 		if ( action == 0 )
+		{
+#ifdef __SWITCH__
+			consoleUpdate( NULL );
+#endif
 			continue;
+		}
 
 		if ( action == EOF )
 			exitProgram( EXIT_FAILURE );
