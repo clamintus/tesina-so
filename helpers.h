@@ -2,11 +2,18 @@
 
 
 #ifdef __SWITCH__
+ #include <switch.h>
+ extern SwkbdConfig gSwkbd;
+
  #define _fflush( stdout ) { fflush( stdout ); consoleUpdate( NULL ); }
- #define _exit( eval ) { fflush( stdout ); consoleUpdate( NULL ); consoleExit( NULL ); socketExit(); exit ( eval ); }
+ #define _exit( eval ) { fflush( stdout ); consoleUpdate( NULL ); swkbdClose( &gSwkbd ); consoleExit( NULL ); hidsysExit(); socketExit(); exit ( eval ); }
+ #define CURSHOW ""
+ #define CURHIDE ""
 #else
  #define _fflush( stdout ) fflush( stdout )
  #define _exit( eval ) exit( eval )
+ #define CURSHOW "\033[?25h"
+ #define CURHIDE "\033[?25l"
 #endif
 
 
@@ -30,3 +37,5 @@ ssize_t getPostSize( Post *post );
 int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len );
 void setTerminalMode( enum terminal_mode mode );
 void restoreTerminal( void );
+
+SwkbdTextCheckResult validaOggetto( char* oggetto, size_t len_oggetto );

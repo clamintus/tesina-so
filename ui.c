@@ -219,7 +219,7 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 			goto endloop;
 		}
 
-		if ( *curr == '\v' )
+		if ( *curr == '\v' || *curr == '\n' )
 		{
 			lines[ l++ ] = ++curr;
 			curline = curr;
@@ -264,10 +264,19 @@ endloop:
 	for ( unsigned int i = 0; i < y_len && start_index + i < l; i++ )
 	{
 		int line_len = lines[ start_index + i + 1 ] - lines[ start_index + i ];
+#ifdef __SWITCH__
+		if ( line_len && lines[ start_index + i ][ line_len - 1 ] == '\v' )
+			lines[ start_index + i ][ line_len - 1 ] = '\n';
+#endif
 		printf( "\033[%d;%dH%.*s", y0 + i,
 				           x0,
 					   line_len, lines[ start_index + i ] );
 					   //lines[ start_index + i ][ line_len - 1 ] == '\n' ? "" : "\n" );
+#ifdef __SWITCH__
+		// Rimediamo al casino che abbiamo fatto prima
+		if ( line_len && lines[ start_index + i ][ line_len - 1 ] == '\n' )
+			lines[ start_index + i ][ line_len - 1 ] = '\v';
+#endif
 	}
 	//printf( "\033[%d;%dH%s", l > y_len ? y1 : y0 + l - 1, x0, lines[ l - 1 ] );
 
@@ -275,6 +284,7 @@ endloop:
 
 
 	//fflush( stdout );
+	
 
 	return l;
 }
@@ -675,7 +685,7 @@ int drawTui_writePost( ClientState *state )
 	int testo_pad_y = state->current_layout == LAYOUT_MOBILE ? 5 : 9;
 
 	// Come prima cosa riattiviamo il cursore: deve indicare all'utente dove sta scrivendo
-	printf( "\033[%d;%dH%s\033[?25h", oggetto_y, oggetto_x, oggetto_text );
+	printf( "\033[%d;%dH%s" CURSHOW, oggetto_y, oggetto_x, oggetto_text );
 	
 	if ( state->current_draft_field == FIELD_TESTO )	// per lasciare il cursore sull'oggetto alla fine
 	{
@@ -691,6 +701,11 @@ int drawTui_writePost( ClientState *state )
 		      window.ws_col - testo_pad_x, window.ws_row - testo_pad_y,	// x1 y1
 		      -1				    );  		// vogliamo sempre l'ultima parte del testo
 
+#ifdef __SWITCH__
+	if ( state->current_draft_field == FIELD_TESTO )
+		printf( "\xdb" );	// "cursore"
+#endif
+
 	if ( state->current_draft_field == FIELD_OGGETTO )
 	{
 		if ( state->len_oggetto > window.ws_col - 11 - oggetto_x )
@@ -698,6 +713,10 @@ int drawTui_writePost( ClientState *state )
 						    state->buf_oggetto + ( state->len_oggetto - ( window.ws_col - 11 - oggetto_x ) + 3 ) );
 		else
 			printf( "\033[%d;%dH%s", oggetto_y, oggetto_x + strlen( oggetto_text ), state->buf_oggetto );
+
+#ifdef __SWITCH__
+		printf( "\xdb" );	// "cursore"
+#endif
 	}
 }
 

@@ -11,6 +11,7 @@ struct winsize {
 
 void switchUiInit( void );
 
+
 //uint64_t htobe64( uint64_t h64 )
 //{
 //	char buf[8];

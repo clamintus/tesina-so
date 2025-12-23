@@ -37,6 +37,9 @@ size_t msg_size;
 #endif
 
 #ifdef __SWITCH__
+HidsysUniquePadId unique_pad_ids[2]={0};
+HidsysNotificationLedPattern pattern;
+int hidsys_enabled;
 PadState gPad;
 PadRepeater gPadRepeater;
 SwkbdConfig gSwkbd;
@@ -206,7 +209,7 @@ void exitProgram( int exit_code )
 	gState.opened_post = NULL;
 
 	setTerminalMode( TERM_CANON );
-	printf( "\033[?25h" );	// show cursor
+	printf( CURSHOW );	// show cursor
 	_exit( exit_code );
 }
 
@@ -281,14 +284,17 @@ int reauth( unsigned char* msg_buf, size_t* msg_size )
 	int len_user, len_pass;
 	int ret;
 
-	printf( "\033[2J\033[1;1HOccorre l'autenticazione per continuare.\n\n\033[?25h" );
+	printf( "\033[2J\033[1;1HOccorre l'autenticazione per continuare.\n\n" CURSHOW );
 	_fflush( stdout );
 	setTerminalMode( TERM_CANON );
 	
 	if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
 		return -1;
 	setTerminalMode( TERM_CANON_NOECHO );
-	if ( ( len_pass = getValidInput( pass, 256, "\033[?25lPassword: " ) ) < 0 )
+#ifdef __SWITCH__
+	swkbdConfigSetOkButtonText( &gSwkbd, "Accedi" );
+#endif
+	if ( ( len_pass = getValidInput( pass, 256, CURHIDE "Password: " ) ) < 0 )
 		return -1;
 	setTerminalMode( TERM_RAW );
 
@@ -347,11 +353,45 @@ int main( int argc, char *argv[] )
 	padConfigureInput( 1, HidNpadStyleSet_NpadStandard );
 
 	padInitializeDefault( &gPad );
-	padRepeaterInitialize( &gPadRepeater, 60, 4 );
+	padRepeaterInitialize( &gPadRepeater, 15, 4 );
+	hidInitializeTouchScreen();
 	socketInitializeDefault();
+	hidsys_enabled = R_SUCCEEDED( hidsysInitialize() );
 
 	swkbdCreate( &gSwkbd, 0 );
-	swkbdConfigMakePresetDefault( &gSwkbd );
+
+
+	// Inizializzazione LED	
+	memset(&pattern, 0, sizeof(pattern));
+
+	// Setup Heartbeat effect pattern data.
+	pattern.baseMiniCycleDuration = 0x1;             // 12.5ms.
+	pattern.totalMiniCycles = 0xF;                   // 16 mini cycles.
+	pattern.totalFullCycles = 0x0;                   // Repeat forever.
+	pattern.startIntensity = 0x0;                    // 0%.
+
+	// First beat.
+	pattern.miniCycles[0].ledIntensity = 0xF;        // 100%.
+	pattern.miniCycles[0].transitionSteps = 0xF;     // 15 steps. Total 187.5ms.
+	pattern.miniCycles[0].finalStepDuration = 0x0;   // Forced 12.5ms.
+	pattern.miniCycles[1].ledIntensity = 0x0;        // 0%.
+	pattern.miniCycles[1].transitionSteps = 0xF;     // 15 steps. Total 187.5ms.
+	pattern.miniCycles[1].finalStepDuration = 0x0;   // Forced 12.5ms.
+
+	// Second beat.
+	pattern.miniCycles[2].ledIntensity = 0xF;
+	pattern.miniCycles[2].transitionSteps = 0xF;
+	pattern.miniCycles[2].finalStepDuration = 0x0;
+	pattern.miniCycles[3].ledIntensity = 0x0;
+	pattern.miniCycles[3].transitionSteps = 0xF;
+	pattern.miniCycles[3].finalStepDuration = 0x0;
+
+	// Led off wait time.
+	for(s32 i=2; i<15; i++) {
+	    pattern.miniCycles[i].ledIntensity = 0x0;        // 0%.
+	    pattern.miniCycles[i].transitionSteps = 0xF;     // 15 steps. Total 187.5ms.
+	    pattern.miniCycles[i].finalStepDuration = 0xF;   // 187.5ms.
+	}
 
 	
 	// Otteniamo indirizzo e porta dall'utente
@@ -359,12 +399,24 @@ int main( int argc, char *argv[] )
 	char address_buf[ 4097 ];
 	char port_buf[ 10 ];
 
-	//if ( getValidInput( address_buf, 4097, "Inserisci l'indirizzo del server" ) == -1 )
-	//	_exit( EXIT_FAILURE );
-	//if ( getValidInput( port_buf, 10, "Inserisci la porta" ) == -1 )
-	//	_exit( EXIT_FAILURE );
 	sprintf( address_buf, "192.168.1.130" );
 	sprintf( port_buf, "3000" );
+#ifndef DEBUG
+	swkbdConfigMakePresetUserName( &gSwkbd );
+	swkbdConfigSetReturnButtonFlag( &gSwkbd, 0 );
+	swkbdConfigSetStringLenMin( &gSwkbd, 1 );
+	swkbdConfigSetInitialText( &gSwkbd, address_buf );
+	if ( getValidInput( address_buf, 4097, "Inserisci l'indirizzo del server" ) == -1 )
+		_exit( EXIT_FAILURE );
+
+	swkbdConfigMakePresetDefault( &gSwkbd );
+	swkbdConfigSetReturnButtonFlag( &gSwkbd, 0 );
+	swkbdConfigSetStringLenMin( &gSwkbd, 1 );
+	swkbdConfigSetType( &gSwkbd, SwkbdType_NumPad );
+	swkbdConfigSetOkButtonText( &gSwkbd, "Connetti" );
+	if ( getValidInput( port_buf, 5, "Inserisci la porta" ) == -1 )
+		_exit( EXIT_FAILURE );
+#endif
 
 	char *endptr;
 
@@ -496,6 +548,9 @@ int main( int argc, char *argv[] )
 			if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
 				_exit( EXIT_FAILURE );
 			setTerminalMode( TERM_CANON_NOECHO );
+#ifdef __SWITCH__
+			swkbdConfigSetOkButtonText( &gSwkbd, "Accedi" );
+#endif
 			if ( ( len_pass = getValidInput( pass, 256, "Password: " ) ) < 0 )
 				_exit( EXIT_FAILURE );
 			setTerminalMode( TERM_CANON );
@@ -614,10 +669,29 @@ oob:
 			}
 
 			if ( gState.num_posts > old_posts )
+			{
 				sprintf( gState.state_label, "Nuovi post disponibili!" );
+#ifdef __SWITCH__
+				s32 total_entries = 0;
+				memset( unique_pad_ids, 0, sizeof( unique_pad_ids ) );
+
+				// Get the UniquePadIds for the specified controller, which will then be used with hidsysSetNotificationLedPattern*.
+				// If you want to get the UniquePadIds for all controllers, you can use hidsysGetUniquePadIds instead.
+				if ( R_SUCCEEDED( hidsysGetUniquePadsFromNpad( padIsHandheld( &gPad ) ? HidNpadIdType_Handheld : HidNpadIdType_No1, unique_pad_ids, 2, &total_entries ) ) )
+				{
+					for(s32 i=0; i<total_entries; i++)  // System will skip sending the subcommand to controllers where this isn't available.
+					{
+
+					    // Attempt to use hidsysSetNotificationLedPatternWithTimeout first with a 2 second timeout, then fallback to hidsysSetNotificationLedPattern on failure. See hidsys.h for the requirements for using these.
+					    hidsysSetNotificationLedPatternWithTimeout(&pattern, unique_pad_ids[i], 2000000000ULL);
+					}
+				}
+#endif
+			}
 			drawTui( &gState );
 
 			gNewDataAvailable = 0;
+
 		}
 
 		if ( gResized )
@@ -692,24 +766,72 @@ resize:
 		padRepeaterUpdate( &gPadRepeater, padGetButtons( &gPad ) & ( HidNpadButton_AnyUp | HidNpadButton_AnyDown ) );
 
 		u64 actions = padRepeaterGetButtons( &gPadRepeater ) | padGetButtonsDown( &gPad );
-		if ( actions & HidNpadButton_AnyUp )
+		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_AnyUp )
 			action = 'k';
-		if ( actions & HidNpadButton_AnyDown )
+		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_AnyDown )
 			action = 'j';
-		if ( actions & HidNpadButton_L )
+		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_L )
 			action = 'h';
-		if ( actions & HidNpadButton_R )
+		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_R )
 			action = 'l';
-		if ( actions & HidNpadButton_A )
+		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_A )
 			action = '\n';
-		if ( actions & HidNpadButton_X )
+		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_X )
 			action = 'w';
-		if ( actions & HidNpadButton_Y )
+		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_Y )
 			action = 'd';
-		if ( actions & HidNpadButton_B )
+		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_B )
 			action = 'b';
-		if ( actions & HidNpadButton_Plus )
+		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_Plus )
 			action = 'q';
+		if ( gState.current_screen == STATE_WRITING && actions & HidNpadButton_Plus )
+			action = '\x02';
+		if ( gState.current_screen == STATE_WRITING && actions & HidNpadButton_Minus )
+			action = '\x09';
+		if ( gState.current_screen == STATE_WRITING && actions & HidNpadButton_X )
+			action = '\x18';
+
+		HidTouchScreenState touch_state = { 0 };
+		hidGetTouchScreenStates( &touch_state, 1 );
+
+		if ( gState.current_screen == STATE_WRITING && ( touch_state.count > 0 || actions & HidNpadButton_A ) )
+		{
+			char*       current_buf = gState.current_draft_field == FIELD_OGGETTO ? gState.buf_oggetto : gState.buf_testo;
+			int         max_buf_len = gState.current_draft_field == FIELD_OGGETTO ? OGGETTO_MAXLEN : TESTO_MAXLEN;  
+			const char* prompt = gState.current_draft_field == FIELD_OGGETTO ? "Inserisci l'oggetto del post" :
+											   "Inserisci il testo del post";
+
+			char testo_copy[ 501 ];
+			char oggetto_copy[ OGGETTO_MAXLEN ];
+			strcpy( testo_copy,   gState.buf_testo   );
+			strcpy( oggetto_copy, gState.buf_oggetto );
+
+			swkbdConfigMakePresetDefault( &gSwkbd );
+			swkbdConfigSetInitialText( &gSwkbd, current_buf );
+			if ( gState.current_draft_field == FIELD_OGGETTO )
+			{
+				swkbdConfigSetReturnButtonFlag( &gSwkbd, 0 );
+				swkbdConfigSetTextCheckCallback( &gSwkbd, validaOggetto );
+			}
+			
+			int ret = getValidInput( current_buf, max_buf_len, prompt );
+
+			if ( ret >= 0 )
+			{
+				if ( gState.current_draft_field == FIELD_OGGETTO )
+					gState.len_oggetto = ret;
+				else
+					gState.len_testo = ret;
+
+				drawTui( &gState );
+			}
+			else
+			{
+				strcpy( gState.buf_oggetto, oggetto_copy );
+				strcpy( gState.buf_testo,   testo_copy   );
+			}
+		}
+
 #endif
 
 		if ( action == 0 )
@@ -740,7 +862,7 @@ resize:
 				}
 				if ( gState.current_screen == STATE_INTRO )
 				{
-					printf( "Caricamento post...\n\033[?25l" );
+					printf( "Caricamento post...\n" CURHIDE );
 					// carica post...
 					if ( loadPosts( msg_buf, &msg_size, 1 ) == -1 )
 					{
@@ -922,7 +1044,7 @@ resize:
 				{
 					gState.current_screen = STATE_LISTING;
 					gState.state_label[0] = '\0';
-					printf( "\033[?25l" );
+					printf( CURHIDE );
 					drawTui( &gState );
 				}
 				break;
@@ -957,6 +1079,13 @@ resize:
 						gState.state_label[0] = '\0';
 						break;
 					}
+
+#ifdef __SWITCH__
+					// La Switch ha bisogno dei \n reali per la tastiera, sanitizziamo qui
+					for ( int i = 0; i < gState.len_testo; i++ )
+						if ( gState.buf_testo[ i ] == '\n' )
+							gState.buf_testo[ i ] = '\v';
+#endif
 
 					if ( gState.auth_level < 0 )
 					{
@@ -1023,7 +1152,7 @@ resize:
 						sprintf( gState.state_label, "Post pubblicato!" );
 						drawTui( &gState );
 						gState.current_screen = STATE_LISTING;
-						printf( "\033[?25l" );
+						printf( "\033" CURHIDE );
 						if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
 						{
 							drawError( "Connessione persa.\nImpossibile aggiornare i post." );

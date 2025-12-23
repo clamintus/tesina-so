@@ -53,6 +53,9 @@ CFLAGS	:=	-g -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
 
 CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DPOSIX_MUTEX -DSTATIC_BUFFER
+ifdef DEBUG
+CFLAGS	+=	-DDEBUG
+endif
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 

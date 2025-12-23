@@ -39,7 +39,14 @@ void restoreTerminal( void )
 	tcsetattr( 0, TCSANOW, &gOldTerminal );
 }
 #else
-void setTerminalMode( enum terminal_mode mode ) {}
+void setTerminalMode( enum terminal_mode mode ) {
+	if ( mode == TERM_CANON )
+		swkbdConfigMakePresetUserName( &gSwkbd );
+	else if ( mode == TERM_CANON_NOECHO )
+		swkbdConfigMakePresetPassword( &gSwkbd );
+	else
+		swkbdConfigMakePresetDefault( &gSwkbd );
+}
 void restoreTerminal( void ) {}
 #endif
 
@@ -79,7 +86,8 @@ uint64_t conv_u64( void* u64_addr, enum conv_type to_what )
 int getValidInput( char* dest, int max_size, const char* prompt )
 {
 #ifdef __SWITCH__
-	swkbdConfigSetHeaderText( &gSwkbd, prompt );
+	swkbdConfigSetGuideText( &gSwkbd, prompt );
+	swkbdConfigSetStringLenMax( &gSwkbd, max_size );
 
 	if ( !R_SUCCEEDED( swkbdShow( &gSwkbd, dest, max_size ) ) )
 		return -1;
@@ -170,3 +178,16 @@ int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
 	return len;
 }
 
+#ifdef __SWITCH__
+SwkbdTextCheckResult validaOggetto( char* oggetto, size_t len_oggetto )
+{
+	for ( unsigned int i = 0; i < len_oggetto; i++ )
+		if ( oggetto[ i ] == '\n' )
+		{
+			strncpy( oggetto, "Oggetto non valido.", len_oggetto );
+			return SwkbdTextCheckResult_Bad;
+		}
+
+	return SwkbdTextCheckResult_OK;
+}
+#endif
