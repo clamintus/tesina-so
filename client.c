@@ -27,17 +27,14 @@
 #include "font.h"
 #endif
 
-#ifndef _fflush
- #define _fflush( stdout ) fflush( stdout )
- #define _exit( eval ) exit( eval )
-#endif
-
 int   s_sock;
 //Post *gLoadedPosts[10] = { 0 };
 ClientState gState;
 
+#ifdef STATIC_BUFFER
 unsigned char msg_buf[655360];
 size_t msg_size;
+#endif
 
 #ifdef __SWITCH__
 PadState gPad;
@@ -210,11 +207,7 @@ void exitProgram( int exit_code )
 
 	setTerminalMode( TERM_CANON );
 	printf( "\033[?25h" );	// show cursor
-#ifdef __SWITCH__
-	consoleExit( NULL );
-#else
 	_exit( exit_code );
-#endif
 }
 
 int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
@@ -328,6 +321,10 @@ int main( int argc, char *argv[] )
 	int  		    auth_level = -1;		/* 1 amministratore, 0: utente standard, -1: anonimo */
 	struct sockaddr_in  servaddr;
 	struct hostent     *he;
+#ifndef STATIC_BUFFER
+	unsigned char 	    msg_buf[655360];
+	size_t 		    msg_size;
+#endif
 #ifndef __SWITCH__
 	struct sigaction    sa = { 0 };
 	sigset_t	    sigset;
@@ -411,8 +408,8 @@ int main( int argc, char *argv[] )
 	cp437_font.gfx         = OLDSCHOOL_MODEL30_16;
 	cp437_font.asciiOffset = 0;
 	cp437_font.numChars    = 256;
-	cp437_font.tileWidth   = 4;
-	cp437_font.tileHeight  = 8;
+	cp437_font.tileWidth   = 8;
+	cp437_font.tileHeight  = 16;
 
 	PrintConsole *console = consoleGetDefault();
 	consoleSetFont( console, &cp437_font );
@@ -585,10 +582,14 @@ oob:
 			int oob_ret;
 
 			oob_ret = recv( s_sock, &buf, 1, MSG_OOB );
+
 			if ( oob_ret <= 0 )
 			{
+				if ( oob_ret == -1 && errno == EINTR )
+					goto oob;
+
 				if ( oob_ret == -1 )
-					warn( "ATTENZIONE: recv fallita nella gestione della notifica OOB!" );
+					err( EXIT_FAILURE, "ATTENZIONE: recv fallita nella gestione della notifica OOB!" );
 
 				else if ( oob_ret == 0 )
 				{
@@ -599,6 +600,9 @@ oob:
 				}
 			}
 
+			//if ( buf != '!' )
+			//	continue;
+				
 			unsigned int old_posts = gState.num_posts;
 
 			if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
@@ -655,40 +659,51 @@ resize:
 		// La select() ha ritornato, getchar() è garantita non bloccante ora perché abbiamo i dati in input
 		action = getchar();
 #else
-		fd_set oob_set;
-		FD_ZERO( &oob_set );
-		FD_SET( s_sock, &oob_set );
+		//su Switch non posso né usare SIGURG (i segnali non esistono) né fare la getchar() bloccante
+		//perché appletMainLoop() deve essere chiamato periodicamente per non bloccare la console
+		//fd_set oob_set;
+		//FD_ZERO( &oob_set );
+		//FD_SET( s_sock, &oob_set );
 
-		struct timeval tv;
-		tv.tv_sec  = 0;
-		tv.tv_usec = 0;
+		//struct timeval tv;
+		//tv.tv_sec  = 0;
+		//tv.tv_usec = 0;
 
-		// La Switch non rileva gli input con select()!
-		if ( select( s_sock+1, NULL, NULL, &oob_set, &tv ) == -1 )
-			_exit( EXIT_FAILURE );
+		//// La Switch non rileva gli input con select()!
+		//if ( select( s_sock+1, &oob_set, NULL, NULL, &tv ) == -1 )
+		//	_exit( EXIT_FAILURE );
 
 
-		// gestiamo qui quello che su Linux gestivamo con i segnali
+		//// gestiamo qui quello che su Linux gestivamo con i segnali
 
-		if ( FD_ISSET( s_sock, &oob_set ) )
+		//if ( FD_ISSET( s_sock, &oob_set ) )
+		//	goto oob;
+
+		// L'approccio classico con select() sembra non funzionare sia con il set in readfds che in exceptfds, facciamo così
+		char buf;
+		if ( recv( s_sock, &buf, 1, MSG_OOB | MSG_PEEK | MSG_DONTWAIT ) == 1 )	// o ritorna 0 (dati OOB presenti/connessione chiusa)
+											// o -1 (nessun dato/altro errore, assumiamo EWOULDBLOCK) 
 			goto oob;
+
 
 		// ora possiamo gestire l'input della Switch
 
 		padUpdate( &gPad );
-		padRepeaterUpdate( &gPadRepeater, padGetButtons( &gPad ) );
+		padRepeaterUpdate( &gPadRepeater, padGetButtons( &gPad ) & ( HidNpadButton_AnyUp | HidNpadButton_AnyDown ) );
 
 		u64 actions = padRepeaterGetButtons( &gPadRepeater ) | padGetButtonsDown( &gPad );
 		if ( actions & HidNpadButton_AnyUp )
 			action = 'k';
 		if ( actions & HidNpadButton_AnyDown )
 			action = 'j';
-		if ( ( actions & HidNpadButton_AnyLeft ) || ( actions & HidNpadButton_L ) )
+		if ( actions & HidNpadButton_L )
 			action = 'h';
-		if ( ( actions & HidNpadButton_AnyRight ) || ( actions & HidNpadButton_R ) )
+		if ( actions & HidNpadButton_R )
 			action = 'l';
 		if ( actions & HidNpadButton_A )
 			action = '\n';
+		if ( actions & HidNpadButton_X )
+			action = 'w';
 		if ( actions & HidNpadButton_Y )
 			action = 'd';
 		if ( actions & HidNpadButton_B )

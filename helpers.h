@@ -1,5 +1,15 @@
 #include "types.h"
 
+
+#ifdef __SWITCH__
+ #define _fflush( stdout ) { fflush( stdout ); consoleUpdate( NULL ); }
+ #define _exit( eval ) { fflush( stdout ); consoleUpdate( NULL ); consoleExit( NULL ); socketExit(); exit ( eval ); }
+#else
+ #define _fflush( stdout ) fflush( stdout )
+ #define _exit( eval ) exit( eval )
+#endif
+
+
 enum conv_type {
 	TO_HOST,
 	TO_NETWORK

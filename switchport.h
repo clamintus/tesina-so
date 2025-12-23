@@ -4,9 +4,6 @@
 #include <switch.h>
 
 
-#define _fflush( stdout ) { fflush( stdout ); consoleUpdate( NULL ); }
-#define _exit( eval ) { fflush( stdout ); consoleUpdate( NULL ); consoleExit( NULL ); socketExit(); exit ( eval ); }
-
 struct winsize {
 	unsigned short ws_row;
 	unsigned short ws_col;

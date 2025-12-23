@@ -11,6 +11,7 @@
 #include <sys/param.h>
 
 #include "types.h"
+#include "helpers.h"
 #include "ui.h"
 
 #ifdef __SWITCH__
@@ -49,10 +50,9 @@ int updateWinSize( ClientState *state )
 	
 	window.ws_col = switch_console->windowWidth;
 	window.ws_row = switch_console->windowHeight;
-	state->current_layout = LAYOUT_MOBILE;
-	max_posts_per_page = window.ws_row - 5;
-	//state->current_layout = LAYOUT_STANDARD;
-	//max_posts_per_page = window.ws_row - 12;
+	// Il layout standard va bene
+	state->current_layout = LAYOUT_STANDARD;
+	max_posts_per_page = window.ws_row - 12;
 #endif
 
 	return 0;
@@ -100,8 +100,15 @@ void draw_hline2( int row )
 
 void draw_hline( int row )
 {
+#ifdef __SWITCH__
+	const char* VS = "\xc7";
+	const char* VD = "\xb6";
+#else
+	const char* VS = "┠";
+	const char* VD = "┨";
+#endif
 	draw_hline2( row );
-	//printf( "\033[%d;1H┠\033[%d;%dH┨", row, row, window.ws_col );
+	printf( "\033[%d;1H%s\033[%d;%dH%s", row, VS, row, window.ws_col, VD );
 }
 
 
@@ -242,10 +249,17 @@ endloop:
 		start_index = skip;
 
 	// Also draw the scroll indicators
+#ifdef __SWITCH__
+	const char* UPARROW = "\x18";
+	const char* DOWNARR = "\x19";
+#else
+	const char* UPARROW = "↑";
+	const char* DOWNARR = "↓";
+#endif
 	if ( start_index != 0 )
-		printf( "\033[%d;%dH" ANSIREV "[↑]" ANSIRST, y0 - 1, window.ws_col / 2 - 1 );
+		printf( "\033[%d;%dH" ANSIREV "[%s]" ANSIRST, y0 - 1, window.ws_col / 2 - 1, UPARROW );
 	if ( l > y_len && l != y_len + start_index )
-		printf( "\033[%d;%dH" ANSIREV "[↓]" ANSIRST, y1 + 1, window.ws_col / 2 - 1 );
+		printf( "\033[%d;%dH" ANSIREV "[%s]" ANSIRST, y1 + 1, window.ws_col / 2 - 1, DOWNARR );
 
 	for ( unsigned int i = 0; i < y_len && start_index + i < l; i++ )
 	{
