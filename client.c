@@ -304,17 +304,6 @@ int main( int argc, char *argv[] )
 	struct sigaction    sa = { 0 };
 	sigset_t	    sigset;
 
-	sigfillset( &sigset );
-	sa.sa_handler   = oob_handler;
-	sa.sa_mask      = sigset;
-	sigaction( SIGURG, &sa, NULL );
-	sa.sa_handler   = resize_handler;
-	sa.sa_mask      = sigset;
-	sigaction( SIGWINCH, &sa, NULL );
-	sa.sa_handler   = SIG_IGN;
-	sigaction( SIGINT, &sa, NULL );
-	sigaction( SIGPIPE, &sa, NULL );
-
 	gState.current_screen = STATE_INTRO;
 
 	parseCmdLine( argc, argv, &s_addr, &s_port );
@@ -389,6 +378,21 @@ int main( int argc, char *argv[] )
 	// Ci registriamo per gestire SIGURG
 	fcntl( s_sock, F_SETOWN, getpid() );
 
+
+	/* Ora possiamo ignorare CTRL_C, per leggibilità setuppo tutti i segnali qui */
+
+	sigfillset( &sigset );
+	sa.sa_handler   = oob_handler;
+	sa.sa_mask      = sigset;
+	sigaction( SIGURG, &sa, NULL );
+	sa.sa_handler   = resize_handler;
+	sa.sa_mask      = sigset;
+	sigaction( SIGWINCH, &sa, NULL );
+	sa.sa_handler   = SIG_IGN;
+	sigaction( SIGINT, &sa, NULL );
+	sigaction( SIGPIPE, &sa, NULL );
+
+
 	
 	/* Main loop */
 
@@ -410,7 +414,7 @@ int main( int argc, char *argv[] )
 	if ( *msg_buf == SERV_AUTHENTICATE )
 	{
 		setTerminalMode( TERM_CANON );
-		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", argv[1] );
+		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", s_addr );
 		fflush( stdout );
 
 		while (1)
@@ -467,7 +471,7 @@ int main( int argc, char *argv[] )
 	strftime( server_time_str_buf, 20, "%d/%m/%Y %H:%M:%S", localtime( ( time_t *)&server_time ) );
 	sprintf( board_title, msg_buf[12] ? " (%.*s)" : "", msg_buf[12], msg_buf + 13 );
 
-	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %s\n", argv[1], board_title, n_posts, server_time_str_buf );
+	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %s\n", s_addr, board_title, n_posts, server_time_str_buf );
 	printf( "\nInvio) Leggi i post\n    q) Esci\n\n" );
 	fflush( stdout );
 
@@ -481,7 +485,7 @@ int main( int argc, char *argv[] )
 	gState.selected_post = 0;
 	*gState.state_label = '\0';
 	strncpy( gState.board_title, msg_buf + 13, msg_buf[12] + 1 );
-	strncpy( gState.server_addr, argv[1], 100 );
+	strncpy( gState.server_addr, s_addr, 100 );
 	gState.user = user;
 	gState.pass = pass;
 	gState.auth_level = auth_level;
