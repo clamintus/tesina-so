@@ -60,21 +60,6 @@ int updateWinSize( ClientState *state )
 
 void draw_box()
 {
-#ifdef __SWITCH__
-	const char* US = "\xc9";
-	const char* UD = "\xbb";
-	const char* DS = "\xc8";
-	const char* DD = "\xbc";
-	const char* VL = "\xba";
-	const char* HL = "\xcd";
-#else
-	const char* US = "┏";
-	const char* UD = "┓";
-	const char* DS = "┗";
-	const char* DD = "┛";
-	const char* VL = "┃";
-	const char* HL = "━";
-#endif
 	for ( unsigned short y = 1; y < window.ws_row; y++ )
 		printf( "\033[%d;1H%s\033[%d;%dH%s", y, VL, y, window.ws_col, VL );
 	for ( unsigned short x = 1; x < window.ws_col; x++ )
@@ -274,8 +259,8 @@ endloop:
 					   //lines[ start_index + i ][ line_len - 1 ] == '\n' ? "" : "\n" );
 #ifdef __SWITCH__
 		// Rimediamo al casino che abbiamo fatto prima
-		if ( line_len && lines[ start_index + i ][ line_len - 1 ] == '\n' )
-			lines[ start_index + i ][ line_len - 1 ] = '\v';
+		//if ( line_len && lines[ start_index + i ][ line_len - 1 ] == '\n' )
+		//	lines[ start_index + i ][ line_len - 1 ] = '\v';
 #endif
 	}
 	//printf( "\033[%d;%dH%s", l > y_len ? y1 : y0 + l - 1, x0, lines[ l - 1 ] );
@@ -427,14 +412,8 @@ int draw_header( ClientState *state )
 
 int draw_footer( ClientState *state )
 {
-	unsigned short ROW1, ROW2, ROWSTATE;
+	unsigned short ROW1, ROW2, COL1, COL1B, COL2, COL3, COL4, ROWSTATE;
 
-	if ( state->current_layout == LAYOUT_STANDARD )
-	{
-		draw_hline( window.ws_row - 6 );
-		printf( "\033[%d;5H", window.ws_row - 4 );
-	}
-	
 	if ( state->current_layout == LAYOUT_MOBILE )
 	{
 		ROW1 = window.ws_row - 2;
@@ -445,9 +424,28 @@ int draw_footer( ClientState *state )
 	{
 		ROW1 = window.ws_row - 4;
 		ROW2 = window.ws_row - 2;
+#ifdef __SWITCH__
+		COL1 = 5;
+		COL1B = 9;
+		COL2 = 36;
+		COL3 = 63;
+		COL4 = 90;
+#else
+		COL1 = 5;
+		COL1B = 9;
+		COL2 = 36;
+		COL3 = 63;
+		COL4 = 90;
+#endif
 		ROWSTATE = window.ws_row - 1;
 	}
 
+	if ( state->current_layout == LAYOUT_STANDARD )
+	{
+		draw_hline( ROW1 - 2 );
+		printf( "\033[%d;%dH", ROW1, COL1 );
+	}
+	
 	// nel layout grande funzionava bene, NON RISCHIO DI INCASINARLO
 	if ( state->current_layout != LAYOUT_STANDARD )
 	{
@@ -458,45 +456,45 @@ int draw_footer( ClientState *state )
 
 	if ( state->current_screen & UI_LISTNAV && state->selected_post < state->loaded_posts )
 		if ( state->current_layout == LAYOUT_MOBILE )
-			printf( "\033[%d;4H🔼 " ANSIREV " K  J " ANSIRST " 🔽", ROW1 );
+			printf( "\033[%d;4H🔼 " ANSIREV BTNUP BTNDOWN ANSIRST " 🔽", ROW1 );
 		else
-			printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Naviga lista\033[%d;5H", ROW2 );
+			printf( ANSIREV BTNUP ANSIRST "  " ANSIREV BTNDOWN ANSIRST LISTNAVLBL "\033[%d;%dH", ROW2, COL1 );
 
 	if ( state->current_screen & UI_TEXTNAV && state->post_lines > max_post_lines )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;4H🔼 " ANSIREV " K  J " ANSIRST " 🔽", ROW1 );
 		else
-			printf( ANSIREV " K " ANSIRST "  " ANSIREV " J " ANSIRST "  Scorri testo\033[%d;5H", ROW2 );
+			printf( ANSIREV BTNUP ANSIRST "  " ANSIREV BTNDOWN ANSIRST TEXTNAVLBL "\033[%d;%dH", ROW2, COL1 );
 
 	if ( state->current_screen & UI_PAGENAV && state->num_posts > post_limit && state->num_posts != ( unsigned int ) -1 )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;4H⏪ %s%s ⏩", ROW1,
-							    state->loaded_page > 1 ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
+							    state->loaded_page > 1 ? ANSIREV BTNSX ANSIRST : ANSIDIS BTNSX ANSIRST, 
 				                            state->loaded_page < ( state->num_posts - 1 ) / post_limit + 1 ?
-							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST );
+							                             ANSIREV BTNDX ANSIRST : ANSIDIS BTNDX ANSIRST );
 		else
-		printf( "%s  %s  Cambia pagina\033[%d;36H", state->loaded_page > 1 ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
+		printf( "%s  %s" PAGENAVLBL  "\033[%d;%dH", state->loaded_page > 1 ? ANSIREV BTNSX ANSIRST : ANSIDIS BTNSX ANSIRST, 
 				                            state->loaded_page < ( state->num_posts - 1 ) / post_limit + 1 ?
-							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST,
-							    ROW2 );
+							                             ANSIREV BTNDX ANSIRST : ANSIDIS BTNDX ANSIRST,
+							    ROW2, COL2 );
 
 	if ( state->current_screen & UI_READPOST && state->selected_post < state->loaded_posts )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " ↵ " ANSIRST " 📖", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
 		else
-		printf( "\033[%d;36H" ANSIREV " ENTER " ANSIRST "  Leggi post\033[%d;36H", ROW1, ROW2 );
+		printf( "\033[%d;%dH" ANSIREV BTNENT ANSIRST READPOSTLBL "\033[%d;%dH", ROW1, COL2, ROW2, COL2 );
 
 	if ( state->current_screen & UI_WRITEPOST )
 		if ( state->current_layout == LAYOUT_MOBILE )
-			printf( "\033[%d;%dH" ANSIREV " W " ANSIRST " 📝", ROW2, MAX( window.ws_col / 2 - 3, 21 ) );
+			printf( "\033[%d;%dH" ANSIREV BTNWRITE ANSIRST " 📝", ROW2, MAX( window.ws_col / 2 - 3, 21 ) );
 		else
-			printf( ANSIREV " W " ANSIRST "  Scrivi post" );
+			printf( ANSIREV BTNWRITE ANSIRST WRITEPOSTLBL );
 
 	if ( state->current_screen & UI_SENDPOST )
 		if ( state->current_layout == LAYOUT_MOBILE )
-			printf( "\033[%d;4H" ANSIREV " ^X " ANSIRST " 📤\033[%d;4H", ROW1, ROW2 );
+			printf( "\033[%d;4H" ANSIREV BTNSUBMIT ANSIRST " 📤\033[%d;4H", ROW1, ROW2 );
 		else	
-		printf( "\033[%d;9H" ANSIREV " ^X " ANSIRST "  Pubblica\033[%d;9H", ROW1, ROW2 );
+		printf( "\033[%d;%dH" ANSIREV BTNSUBMIT ANSIRST SENDPOSTLBL "\033[%d;%dH", ROW1, COL1B, ROW2, COL1B );
 
 	if ( state->current_screen & UI_BACK )
 		if ( state->current_layout == LAYOUT_MOBILE )
@@ -505,20 +503,21 @@ int draw_footer( ClientState *state )
 					state->current_screen == STATE_SINGLEPOST ? MAX( window.ws_col / 2 - 3, 21 ) : 4,
 					state->current_screen == STATE_WRITING ? "^" : "" );
 		else			   
-		printf( "\033[%d;%dH" ANSIREV " %sB " ANSIRST "  Torna indietro\033[%d;5H", ROW2,
-											    state->current_screen == STATE_SINGLEPOST ? 36 : 9,
-											    state->current_screen == STATE_WRITING ? "^" : "",
-		     							      		    ROW2 );
+		printf( "\033[%d;%dH" ANSIREV "%s" ANSIRST GOBACKLBL       "\033[%d;%dH", ROW2,
+											  state->current_screen == STATE_SINGLEPOST ? COL3 : COL1B,
+											  state->current_screen == STATE_WRITING ? BTNBCK2 : BTNBACK,
+		     							      		  ROW2 );
 
 	if ( state->current_screen == STATE_WRITING )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " ⇥ " ANSIRST " 🔃", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
 		else
-		printf( "\033[%d;36H" ANSIREV " TAB " ANSIRST "  Cambia campo", ROW1 );
+		printf( "\033[%d;%dH" ANSIREV BTNSWITCH ANSIRST SWITCHLBL, ROW1, COL2 );
 	
 	if ( state->current_screen == STATE_LISTING )
 		if ( state->current_layout != LAYOUT_MOBILE )
-			printf( "\033[%d;63H" ANSIREV " R " ANSIRST "  Aggiorna\033[%d;63H", ROW1, ROW2 );
+			//printf( "\033[%d;%dH" ANSIREV " R " ANSIRST "  Aggiorna\033[%d;%dH", ROW1, COL3, ROW2, COL3 );
+			printf( "\033[%d;%dH", ROW2, COL3 );
 
 	if ( state->current_screen & UI_DELPOST && state->loaded_posts > 0 &&
 	     ( state->auth_level != 0 ||
@@ -531,20 +530,20 @@ int draw_footer( ClientState *state )
 			     state->user,
 			     state->opened_post->len_mittente ) ) ) ) )
 		if ( state->current_layout == LAYOUT_MOBILE )
-			printf( "\033[%d;%dH" ANSIREV " D " ANSIRST " 🗑️",
+			printf( "\033[%d;%dH" ANSIREV BTNDEL ANSIRST " 🗑️",
 					ROW2,
 					state->current_screen == STATE_LISTING ? MAX( window.ws_col - 9, 33 ) : 4 );
 		else
-		printf( ANSIREV " D " ANSIRST "  Elimina post\033[%d;90H", ROW1 );
+		printf( ANSIREV BTNDEL ANSIRST DELPOSTLBL "\033[%d;%dH", ROW1, COL4 );
 		
 	if ( state->current_screen != STATE_WRITING )
 		if ( state->current_layout == LAYOUT_MOBILE )
-			printf( "\033[%d;%dH" ANSIREV " Q " ANSIRST " 🚪", ROW1, MAX( window.ws_col - 9, 33 ) );
+			printf( "\033[%d;%dH" ANSIREV BTNQUIT ANSIRST " 🚪", ROW1, MAX( window.ws_col - 9, 33 ) );
 		else
-		printf( "\033[%d;63H" ANSIREV " Q " ANSIRST "  Disconnetti ed esci", ROW1 );
+		printf( "\033[%d;%dH" ANSIREV BTNQUIT ANSIRST QUITLBL, ROW1, COL3 );
 
 	if ( state->current_layout == LAYOUT_STANDARD )
-		printf( "\033[%d;2H\033[0K\033[%dG┃", ROWSTATE, window.ws_col );
+		printf( "\033[%d;2H\033[0K\033[%d;%dH" VL, ROWSTATE, ROWSTATE, window.ws_col );
 	else
 		printf( "\033[%d;1H\033[0K", ROWSTATE );
 	//draw_box();

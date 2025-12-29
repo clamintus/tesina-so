@@ -1,3 +1,5 @@
+#pragma once
+
 #include "types.h"
 
 #ifdef __ANDROID__
@@ -20,6 +22,66 @@
 #define UI_SENDPOST  (1 << 5)
 #define UI_DELPOST   (1 << 6)
 #define UI_BACK      (1 << 7)
+
+#ifdef __SWITCH__
+ #define US		 "\xc9"
+ #define UD		 "\xbb"
+ #define DS		 "\xc8"
+ #define DD		 "\xbc"
+ #define VL		 "\xba"
+ #define HL	 	 "\xcd"
+ #define BTNUP 		" \x1e "
+ #define BTNDOWN 	" \x1f "
+ #define BTNSX 		" L "
+ #define BTNDX 		" R "
+ #define BTNENT 	" A "
+ #define BTNBACK 	" B "
+ #define BTNBCK2 	" B "
+ #define BTNDEL 	" Y "
+ #define BTNSWITCH 	" - "
+ #define BTNWRITE 	" X "
+ #define BTNSUBMIT 	" X "
+ #define BTNQUIT	" + "
+ #define LISTNAVLBL	" Naviga"
+ #define TEXTNAVLBL	" Scorri"
+ #define PAGENAVLBL	" Pag+/-"
+ #define READPOSTLBL	" Leggi"
+ #define WRITEPOSTLBL	" Scrivi"
+ #define SENDPOSTLBL	" Pubblica"
+ #define GOBACKLBL	" Indietro"
+ #define SWITCHLBL	" Ogg./Testo"
+ #define DELPOSTLBL	" Elimina"
+ #define QUITLBL	" Esci"
+#else
+ #define US		 "┏"
+ #define UD		 "┓"
+ #define DS		 "┗"
+ #define DD		 "┛"
+ #define VL		 "┃"
+ #define HL		 "━"
+ #define BTNUP 		" K "
+ #define BTNDOWN 	" J "
+ #define BTNSX 		" H "
+ #define BTNDX 		" L "
+ #define BTNENT 	" ENTER "
+ #define BTNBACK 	" B "
+ #define BTNBCK2 	" ^B "
+ #define BTNDEL 	" D "
+ #define BTNSWITCH 	" TAB "
+ #define BTNWRITE 	" W "
+ #define BTNSUBMIT 	" ^X "
+ #define BTNQUIT	" Q "
+ #define LISTNAVLBL	"  Naviga lista"
+ #define TEXTNAVLBL	"  Scorri testo"
+ #define PAGENAVLBL	"  Cambia pagina"
+ #define READPOSTLBL	"  Leggi post"
+ #define WRITEPOSTLBL	"  Scrivi post"
+ #define SENDPOSTLBL	"  Pubblica"
+ #define GOBACKLBL	"  Torna indietro"
+ #define SWITCHLBL	"  Cambia campo"
+ #define DELPOSTLBL	"  Elimina post"
+ #define QUITLBL	"  Disconnetti ed esci"
+#endif
 
 enum screen_state : uint8_t {
 	STATE_INTRO      = UI_READPOST,

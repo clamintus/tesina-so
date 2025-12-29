@@ -599,7 +599,7 @@ int main( int argc, char *argv[] )
 	sprintf( board_title, msg_buf[12] ? " (%.*s)" : "", msg_buf[12], msg_buf + 13 );
 
 	printf( "\nBenvenuto nella bacheca elettronica di %s%s.\nPost presenti: %u\nOrario del server: %s\n", s_addr, board_title, n_posts, server_time_str_buf );
-	printf( "\nInvio) Leggi i post\n    q) Esci\n\n" );
+	printf( "\n" BTNENT ") Leggi i post\n " BTNQUIT ") Esci\n\n" );
 	_fflush( stdout );
 
 	setTerminalMode( TERM_RAW );
