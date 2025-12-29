@@ -135,8 +135,8 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 	unsigned short y = y0;
 	unsigned int   l = 0;
 
-	char* curr = str;
-	char* lines[1024];
+	const char* curr = str;
+	const char* lines[4096];
 
 	if ( x_len <= 0 || y_len <= 0 )
 		return ( unsigned int )-1;
@@ -146,8 +146,8 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 
 	//printf( "\033[%d;%dH", y, x );
 
-	char* curline = curr;
-	char* curword = curr;
+	const char* curline = curr;
+	const char* curword = curr;
 
 	while ( *curr )
 	//while ( curr - str < size && *curr )
@@ -157,7 +157,7 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 		
 		// non dovremmo arrivare a questo punto,
 		// ma se dovessimo evitiamo di corrompere la stack
-		if ( l > 1024 )
+		if ( l > 4096 )
 			break;
 
 	      nextword:
@@ -337,21 +337,21 @@ int draw_header( ClientState *state )
 
 	if ( state->current_layout == LAYOUT_MOBILE )
 	{
-		sprintf( right_text, "%u/%u ", state->loaded_page, state->num_posts ? ( state->num_posts - 1 ) / post_limit + 1 : 1 );
+		snprintf( right_text, 100, "%u/%u ", state->loaded_page, state->num_posts ? ( state->num_posts - 1 ) / post_limit + 1 : 1 );
 		switch ( state->auth_level )
 		{
 			case 1:
-				sprintf( right_text + strlen( right_text ), "👑\033[1m%s" ANSIRST, state->user );
+				snprintf( right_text + strlen( right_text ), 100, "👑\033[1m%s" ANSIRST, state->user );
 				right_text_len = -8;
 				break;
 
 			case 0:
-				sprintf( right_text + strlen( right_text ), "👤%s", state->user );
+				snprintf( right_text + strlen( right_text ), 100, "👤%s", state->user );
 				right_text_len = 0;
 				break;
 
 			case -1:
-				sprintf( right_text + strlen( right_text ), "🫥" ANSIITA "anon" ANSIRST );
+				snprintf( right_text + strlen( right_text ), 100, "🫥" ANSIITA "anon" ANSIRST );
 				right_text_len = -12;
 				break;
 		}
@@ -361,17 +361,17 @@ int draw_header( ClientState *state )
 		switch ( state->auth_level )
 		{
 			case 1:
-				sprintf( right_text, "Loggato come:  \033[1m%s" ANSIRST, state->user );
+				snprintf( right_text, 100, "Loggato come:  \033[1m%s" ANSIRST, state->user );
 				right_text_len = -8;
 				break;
 
 			case 0:
-				sprintf( right_text, "Loggato come:  %s", state->user );
+				snprintf( right_text, 100, "Loggato come:  %s", state->user );
 				right_text_len = 0;
 				break;
 
 			case -1:
-				sprintf( right_text, "Loggato come:  " ANSIITA "anonymous" ANSIRST );
+				snprintf( right_text, 100, "Loggato come:  " ANSIITA "anonymous" ANSIRST );
 				right_text_len = -12;
 				break;
 		}

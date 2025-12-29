@@ -289,13 +289,19 @@ int reauth( unsigned char* msg_buf, size_t* msg_size )
 	setTerminalMode( TERM_CANON );
 	
 	if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
+	{
+		setTerminalMode( TERM_RAW );
 		return -1;
+	}
 	setTerminalMode( TERM_CANON_NOECHO );
 #ifdef __SWITCH__
 	swkbdConfigSetOkButtonText( &gSwkbd, "Accedi" );
 #endif
 	if ( ( len_pass = getValidInput( pass, 256, CURHIDE "Password: " ) ) < 0 )
+	{
+		setTerminalMode( TERM_RAW );
 		return -1;
+	}
 	setTerminalMode( TERM_RAW );
 
 	msg_buf[0] = CLI_LOGIN;
@@ -334,17 +340,6 @@ int main( int argc, char *argv[] )
 #ifndef __SWITCH__
 	struct sigaction    sa = { 0 };
 	sigset_t	    sigset;
-
-	sigfillset( &sigset );
-	sa.sa_handler   = oob_handler;
-	sa.sa_mask      = sigset;
-	sigaction( SIGURG, &sa, NULL );
-	sa.sa_handler   = resize_handler;
-	sa.sa_mask      = sigset;
-	sigaction( SIGWINCH, &sa, NULL );
-	sa.sa_handler   = SIG_IGN;
-	sigaction( SIGINT, &sa, NULL );
-	sigaction( SIGPIPE, &sa, NULL );
 
 	parseCmdLine( argc, argv, &s_addr, &s_port );
 #else
@@ -515,6 +510,22 @@ int main( int argc, char *argv[] )
 #ifndef __SWITCH__
 	// Ci registriamo per gestire SIGURG
 	fcntl( s_sock, F_SETOWN, getpid() );
+#endif
+
+
+	/* Ora possiamo ignorare CTRL_C, per leggibilità setuppo tutti i segnali qui */
+
+#ifndef __SWITCH__
+	sigfillset( &sigset );
+	sa.sa_handler   = oob_handler;
+	sa.sa_mask      = sigset;
+	sigaction( SIGURG, &sa, NULL );
+	sa.sa_handler   = resize_handler;
+	sa.sa_mask      = sigset;
+	sigaction( SIGWINCH, &sa, NULL );
+	sa.sa_handler   = SIG_IGN;
+	sigaction( SIGINT, &sa, NULL );
+	sigaction( SIGPIPE, &sa, NULL );
 #endif
 
 	
@@ -1179,6 +1190,10 @@ resize:
 								sprintf( gState.state_label, "Errore del server, riprova" );
 								break;
 
+							case 0x2:
+								sprintf( gState.state_label, "Errore interno non temporaneo del server" );
+								break;
+
 							case 0xFF:
 								sprintf( gState.state_label, "Il server è pieno!" );
 								break;
@@ -1226,6 +1241,8 @@ resize:
 					if ( ret )
 					{
 						sprintf( gState.state_label, "Post cancellato!" );
+						if ( gState.opened_post ) free( gState.opened_post );
+						gState.opened_post = NULL;
 						gState.current_screen = STATE_LISTING;
 						if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
 						{
@@ -1246,14 +1263,13 @@ resize:
 						switch( ( unsigned char )msg_buf[1] )
 						{
 							case 0x0:
+								sprintf( gState.state_label, "Non autorizzato" );
+								break;
+
 							case 0xFF:
 								sprintf( gState.state_label, "Post non trovato" );
 								break;
 							
-							case 0x1:
-								sprintf( gState.state_label, "Non autorizzato" );
-								break;
-
 							default:
 								sprintf( gState.state_label, "Errore sconosciuto" );
 						}
