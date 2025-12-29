@@ -264,10 +264,16 @@ int reauth( unsigned char* msg_buf, size_t* msg_size )
 	setTerminalMode( TERM_CANON );
 	
 	if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
+	{
+		setTerminalMode( TERM_RAW );
 		return -1;
+	}
 	setTerminalMode( TERM_CANON_NOECHO );
 	if ( ( len_pass = getValidInput( pass, 256, "\033[?25lPassword: " ) ) < 0 )
+	{
+		setTerminalMode( TERM_RAW );
 		return -1;
+	}
 	setTerminalMode( TERM_RAW );
 
 	msg_buf[0] = CLI_LOGIN;
@@ -903,6 +909,10 @@ resize:
 								sprintf( gState.state_label, "Errore del server, riprova" );
 								break;
 
+							case 0x2:
+								sprintf( gState.state_label, "Errore interno non temporaneo del server" );
+								break;
+
 							case 0xFF:
 								sprintf( gState.state_label, "Il server è pieno!" );
 								break;
@@ -950,6 +960,8 @@ resize:
 					if ( ret )
 					{
 						sprintf( gState.state_label, "Post cancellato!" );
+						if ( gState.opened_post ) free( gState.opened_post );
+						gState.opened_post = NULL;
 						gState.current_screen = STATE_LISTING;
 						if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
 						{
@@ -970,14 +982,13 @@ resize:
 						switch( ( unsigned char )msg_buf[1] )
 						{
 							case 0x0:
+								sprintf( gState.state_label, "Non autorizzato" );
+								break;
+
 							case 0xFF:
 								sprintf( gState.state_label, "Post non trovato" );
 								break;
 							
-							case 0x1:
-								sprintf( gState.state_label, "Non autorizzato" );
-								break;
-
 							default:
 								sprintf( gState.state_label, "Errore sconosciuto" );
 						}

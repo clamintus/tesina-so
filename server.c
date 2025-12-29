@@ -24,6 +24,8 @@ const char* USERDB_PATH   = "users";
 const int   LISTENQ       = 1024;
 
 #define MAXCONNS 1024
+#define MAXPOSTS 2048
+#define MAXUSERS 256
 #define BUF_SIZE 65536
 
 struct session_data {
@@ -43,11 +45,11 @@ int  gAllowGuests = 0;
 int  gPort = 3010;
 char gBoardTitle[256+1] = { 0 };
 
-Post *gPosts[2048];
+Post *gPosts[ MAXPOSTS ];
 int gPostCount = 0;
-char *gUsers[256][2];
+char *gUsers[ MAXUSERS ][2];
 int gUserCount = 0;
-int is_admin[256];
+int is_admin[ MAXUSERS ];
 
 volatile sig_atomic_t gShutdown = 0;
 
@@ -158,6 +160,12 @@ int loadDatabase( void )
 		char* curr_field;
 		char* buffer2 = buffer;
 
+		if ( gPostCount == MAXPOSTS )
+		{
+			fprintf( stderr, "server: Il database contiene troppe entries, ne ho caricate solo %d.\n", MAXPOSTS );
+			break;
+		}
+
 		curr_field = strsep( &buffer2, FS );
 		if ( !buffer2 ) continue;
 		id_buf = curr_field;
@@ -225,10 +233,12 @@ int storeDatabase( void )
 		if ( !curr_post->id )
 			continue;
 		uint16_t len_testo;
+		int64_t timestamp;
 		memcpy( &len_testo, &curr_post->len_testo, 2 );
+		memcpy( &timestamp, &curr_post->timestamp, 8 );
 		// for ( int j = 0; j < sizeof( curr_post->id ); j++ )
 		// 	fprintf( fp, "%02x", ( ( unsigned char *)&curr_post->id )[ j ] );
-		if ( fprintf( fp, "%08x\x1f%u\x1f", curr_post->id, curr_post->timestamp ) < 11 )
+		if ( fprintf( fp, "%08x\x1f%lld\x1f", curr_post->id, timestamp ) < 11 )
 		{
 database_error:
 			if ( fclose( fp ) == EOF )
@@ -315,6 +325,13 @@ int loadUsers( void )
 
 	while ( fgets( buffer, BUF_SIZE, fp ) )
 	{
+		if ( gUserCount == MAXUSERS )
+		{
+			fprintf( stderr, "loadUsers: Il server ha troppi utenti configurati! Ne puoi impostare massimo %d.\n", MAXUSERS );
+			fclose( fp );
+			exit( EXIT_FAILURE );
+		}
+
 		if ( sscanf( buffer, "%[^\x1f]\x1f%[^\x1f]\x1f%d", user, pass, is_admin + gUserCount ) < 3 )
 			continue;
 
@@ -715,7 +732,7 @@ void* clientSession( void* arg )
 				msg_size = 2;
 
 				database_lock();
-				if ( gPostCount == 2048 )
+				if ( gPostCount == MAXPOSTS )
 				{
 					msg_buf[0] = SERV_NOT_OK;
 					msg_buf[1] = 0xFF;
@@ -781,7 +798,13 @@ void* clientSession( void* arg )
 				database_unlock();
 				printf( "server: Nuovo messaggio pubblicato da %s\n", inet_ntoa( session->client_addr ) );
 				if ( store_res < 0 )
+				{
 					printf( "server: Impossibile aggiornare il database dei messaggi\n" );
+					msg_buf[0] = SERV_NOT_OK;
+					msg_buf[1] = 0x02;
+					msg_size = 2;
+					break;
+				}
 
 				msg_buf[0] = SERV_OK;
 				msg_size = 1;
@@ -798,7 +821,7 @@ void* clientSession( void* arg )
 				if ( tryLogin( client_user, client_pass ) < 0 )
 				{
 					msg_buf[0] = SERV_NOT_OK;
-					msg_buf[1] = 0x1;
+					msg_buf[1] = 0;
 					break;
 				}
 
@@ -807,7 +830,7 @@ void* clientSession( void* arg )
 				if ( post_id == 0x0 )
 				{
 					msg_buf[0] = SERV_NOT_OK;
-					msg_buf[1] = 0x0;
+					msg_buf[1] = 0xFF;
 					break;
 				}
 
@@ -830,7 +853,7 @@ void* clientSession( void* arg )
 				if ( user_auth_level < 1 && strncmp( gPosts[ post_index ]->data, client_user, gPosts[ post_index ]->len_mittente ) )
 				{
 					msg_buf[0] = SERV_NOT_OK;
-					msg_buf[1] = 0x1;
+					msg_buf[1] = 0;
 					database_unlock();
 					break;
 				}
