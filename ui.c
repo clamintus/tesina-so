@@ -113,7 +113,6 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 		return ( unsigned int )-1;
 
 	lines[ l++ ] = curr;
-	lines[ 1 ]   = curr + strnlen( str, size );
 
 	//printf( "\033[%d;%dH", y, x );
 
@@ -195,6 +194,8 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 
 		//goto nextword;
 	}
+	
+	lines[ l ] = str + strnlen( str, size );
 
 endloop:
 	// Ora stampiamo effettivamente le righe
@@ -606,7 +607,7 @@ int drawTui_readPost( ClientState *state )
 			       window.ws_row - ftr_size - padding_y,
 			       state->post_offset                    );
 
-	max_post_lines    = window.ws_row - 2 * padding_y - hdr_size - ftr_size;
+	max_post_lines    = window.ws_row - 2 * padding_y - hdr_size - ftr_size - 4;
 	state->more_lines = state->post_lines - state->post_offset > max_post_lines;
 
 	draw_footer( state );
