@@ -1023,6 +1023,22 @@ resize:
 				}
 				break;
 
+
+			case '\033':
+				// ignoriamo le sequenze ANSI inserite, sono pericolose!
+				struct timeval tv = { 0 };
+				fd_set fdset;
+				while (1)
+				{
+					FD_ZERO( &fdset );
+					FD_SET( STDIN_FILENO, &fdset );
+					select( STDIN_FILENO+1, &fdset, NULL, NULL, &tv );
+					if ( !FD_ISSET( STDIN_FILENO, &fdset ) )
+						break;
+					getchar();
+				}
+				break;
+
 			
 			default:
 				if ( gState.current_screen == STATE_WRITING && action >= ' ' )
