@@ -51,10 +51,6 @@ SwkbdConfig gSwkbd;
 volatile sig_atomic_t gNewDataAvailable = 0;
 volatile sig_atomic_t gResized = 0;
 
-int   s_sock;
-//Post *gLoadedPosts[10] = { 0 };
-ClientState gState;
-
 unsigned int post_limit;
 extern unsigned int max_posts_per_page;
 extern struct winsize window;
