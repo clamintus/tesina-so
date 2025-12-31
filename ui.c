@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <err.h>
@@ -15,8 +16,8 @@
 
 //struct termios term;
 struct winsize window;
-extern int post_limit;
-int max_posts_per_page;
+extern unsigned int post_limit;
+unsigned int max_posts_per_page;
 unsigned int max_post_lines;
 
 int updateWinSize( ClientState *state )
@@ -30,13 +31,15 @@ int updateWinSize( ClientState *state )
 	if ( window.ws_col < 87 )
 	{
 		state->current_layout = LAYOUT_MOBILE;
-		max_posts_per_page = window.ws_row - 5;
+		max_posts_per_page = MAX( ( int )window.ws_row - 5, 1 );
 	}
 	else
 	{
 		state->current_layout = LAYOUT_STANDARD;
-		max_posts_per_page = window.ws_row - 12;
+		max_posts_per_page = MAX( ( int )window.ws_row - 12, 1 );
 	}
+
+	max_posts_per_page = MIN( max_posts_per_page, UINT8_MAX );
 
 	return 0;
 }
@@ -102,8 +105,8 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 	unsigned short x_len = x1 - x0 + 1;
 	unsigned short y_len = y1 - y0 + 1;
 	
-	unsigned short x = x0;
-	unsigned short y = y0;
+	//unsigned short x = x0;
+	//unsigned short y = y0;
 	unsigned int   l = 0;
 
 	const char* curr = str;
@@ -130,11 +133,11 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 		if ( l > 4096 )
 			break;
 
-	      nextword:
+	      //nextword:
 		//while ( curr - str < size && !isspace( *curr ) )
 		while ( !isspace( *curr ) )
 		{
-			if ( *curr == '\0' || curr - str == size )
+			if ( *curr == '\0' || curr - str == ( ptrdiff_t )size )
 			{
 				lines[ l ] = curr;
 				goto endloop;
@@ -168,7 +171,7 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 			continue;
 		}
 
-		if ( curr - str == size )
+		if ( curr - str == ( ptrdiff_t )size )
 		{
 			lines[ l ] = curr;
 			goto endloop;
@@ -232,8 +235,8 @@ endloop:
 
 int draw_header( ClientState *state )
 {
-	char left_text[257];
-	char right_text[100];
+	char left_text[512];
+	char right_text[200];
 	int left_text_len;
 	int right_text_len;
 	const char* listing_str    = "Lista post";
@@ -254,7 +257,7 @@ int draw_header( ClientState *state )
 				break;
 
 			case STATE_WRITING:
-				sprintf( left_text, "%.*s", writing_str, state->buf_oggetto[0] == '\0' ? "(nessun oggetto)" : state->buf_oggetto );
+				sprintf( left_text, "%s", state->buf_oggetto[0] == '\0' ? "(nessun oggetto)" : state->buf_oggetto );
 				break;
 
 			case STATE_SINGLEPOST:
@@ -280,7 +283,7 @@ int draw_header( ClientState *state )
 			break;
 
 		case STATE_WRITING:
-			sprintf( left_text, "%s   |   %.*s", writing_str, window.ws_col - 6 - strlen( writing_str ) - 7,
+			sprintf( left_text, "%s   |   %.*s", writing_str, (int)( window.ws_col - 6 - strlen( writing_str ) - 7 ),
 							     state->buf_oggetto[0] == '\0' ? "(nessun oggetto)" : state->buf_oggetto );
 			break;
 
@@ -491,10 +494,10 @@ int draw_footer( ClientState *state )
 	
 	if ( state->state_label[0] != '\0' )
 		if ( state->current_layout == LAYOUT_MOBILE )
-			printf( "\033[%d;%dH" ANSIREV "%s" ANSIRST, ROWSTATE, MAX( (int)window.ws_col - strlen( state->state_label ), 1 ),
+			printf( "\033[%d;%dH" ANSIREV "%s" ANSIRST, ROWSTATE, MAX( ( int )window.ws_col - ( int )strlen( state->state_label ), 1 ),
 			     					    state->state_label );
 		else
-		printf( "\033[%d;%dH" ANSIREV " %s " ANSIRST, ROWSTATE, window.ws_col - strlen( state->state_label ) - 3, state->state_label );
+		printf( "\033[%d;%dH" ANSIREV " %s " ANSIRST, ROWSTATE, window.ws_col - ( int )strlen( state->state_label ) - 3, state->state_label );
 
 	return state->current_layout == LAYOUT_MOBILE ? 4 : 7;
 }
@@ -521,7 +524,7 @@ int drawTui_listView( ClientState *state )
 		return 0;
 	}
 
-	for ( int i = state->page_offset; i < state->loaded_posts && i < state->page_offset + max_posts_per_page; i++ )
+	for ( unsigned int i = state->page_offset; i < state->loaded_posts && i < state->page_offset + max_posts_per_page; i++ )
 	{
 		Post *post = state->cached_posts[ i ];
 		char *ora_post;
@@ -558,6 +561,8 @@ int drawTui_listView( ClientState *state )
 		//free( oggetto );
 		free( ora_post );
 	}
+
+	return 0;
 }
 
 int drawTui_readPost( ClientState *state )
@@ -611,6 +616,8 @@ int drawTui_readPost( ClientState *state )
 	state->more_lines = state->post_lines - state->post_offset > max_post_lines;
 
 	draw_footer( state );
+
+	return 0;
 }
 
 int drawTui_writePost( ClientState *state )
@@ -620,9 +627,15 @@ int drawTui_writePost( ClientState *state )
 
 	const char* oggetto_text = "Oggetto: ";
 	int oggetto_x = state->current_layout == LAYOUT_MOBILE ? 1 : 3;
-	int oggetto_y = state->current_layout == LAYOUT_MOBILE ? 3 : 5;
+	int oggetto_y = hdr_size + 2;
 	int testo_pad_x = state->current_layout == LAYOUT_MOBILE ? 0 : 2;
-	int testo_pad_y = state->current_layout == LAYOUT_MOBILE ? 5 : 9;
+	int testo_pad_y = hdr_size + ftr_size;
+
+	if ( state->current_layout == LAYOUT_STANDARD )
+	{
+		// più carino
+		testo_pad_y -= 2;
+	}
 
 	// Come prima cosa riattiviamo il cursore: deve indicare all'utente dove sta scrivendo
 	printf( "\033[%d;%dH%s\033[?25h", oggetto_y, oggetto_x, oggetto_text );
@@ -638,17 +651,19 @@ int drawTui_writePost( ClientState *state )
 	printWrapped( state->buf_testo,						// stringa
 		      state->len_testo,						// lunghezza
 		      oggetto_x, oggetto_y + 2,					// x0 y0
-		      window.ws_col - testo_pad_x, window.ws_row - testo_pad_y,	// x1 y1
+		      window.ws_col - testo_pad_x, window.ws_row - testo_pad_y, // x1 y1
 		      -1				    );  		// vogliamo sempre l'ultima parte del testo
 
 	if ( state->current_draft_field == FIELD_OGGETTO )
 	{
 		if ( state->len_oggetto > window.ws_col - 11 - oggetto_x )
-			printf( "\033[%d;%dH...%s", oggetto_y, oggetto_x + strlen( oggetto_text ),
+			printf( "\033[%d;%dH...%s", oggetto_y, oggetto_x + ( int )strlen( oggetto_text ),
 						    state->buf_oggetto + ( state->len_oggetto - ( window.ws_col - 11 - oggetto_x ) + 3 ) );
 		else
-			printf( "\033[%d;%dH%s", oggetto_y, oggetto_x + strlen( oggetto_text ), state->buf_oggetto );
+			printf( "\033[%d;%dH%s", oggetto_y, oggetto_x + ( int )strlen( oggetto_text ), state->buf_oggetto );
 	}
+
+	return 0;
 }
 
 	
@@ -677,9 +692,10 @@ int drawTui( ClientState *state )
 	}
 
 	fflush( stdout );
+	return 0;
 }
 
-int drawError( char *error_msg )
+void drawError( char *error_msg )
 {
 	printf( "\033[2J\033[H%s", error_msg );
 	

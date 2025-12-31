@@ -58,7 +58,7 @@ typedef struct client_state {
 	unsigned char	   len_oggetto;
 	unsigned int	   len_testo;
 	char 		   state_label[100];
-	unsigned long	   most_recent_post_shown;
+	time_t		   most_recent_post_shown;
 	
 	// Server characteristics
 	char		   board_title[257];
@@ -79,4 +79,4 @@ int updateWinSize( ClientState *state );
 int drawTui( ClientState *state );
 //int drawTui_listView( ClientState *state );
 //int drawTui_readPost( ClientState *state );
-int drawError( char *error_msg );
+void drawError( char *error_msg );

@@ -19,17 +19,18 @@
 #include "helpers.h"
 #include "ui.h"
 
-int   s_sock;
-//Post *gLoadedPosts[10] = { 0 };
-ClientState gState;
-volatile sig_atomic_t gNewDataAvailable = 0;
-volatile sig_atomic_t gResized = 0;
-
 #define OGGETTO_MAXLEN 255
 #define TESTO_MAXLEN 60000
 
-int post_limit;
-extern int max_posts_per_page;
+int   s_sock;
+//Post *gLoadedPosts[10] = { 0 };
+ClientState gState;
+
+volatile sig_atomic_t gNewDataAvailable = 0;
+volatile sig_atomic_t gResized = 0;
+
+unsigned int post_limit;
+extern unsigned int max_posts_per_page;
 extern struct winsize window;
 
 /*
@@ -50,7 +51,7 @@ void resize_handler( int sig )
 	gResized = 1;
 }
 
-int parseCmdLine( int argc, char *argv[], char **server_addr, int *server_port )
+void parseCmdLine( int argc, char *argv[], char **server_addr, int *server_port )
 {
 	char *endptr;
 
@@ -69,13 +70,13 @@ esci:
 
 int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_Frametype resp )
 {
-	int ret;
+	//int ret;
 	uint16_t tmp_u16;
 	uint32_t tmp_u32;
 	uint64_t tmp_u64;
 	//char encode_buf[8];
 	
-	uint8_t value_u8;
+	//uint8_t value_u8;
 
 
 	/* Encoding */
@@ -171,14 +172,14 @@ void exitProgram( int exit_code )
 	if ( gState.current_screen != STATE_INTRO ) printf( "\033[2J\033[H" );
 
 	close( s_sock );
-	for ( int i = 0; i < gState.loaded_posts; i++ )
+	for ( unsigned int i = 0; i < gState.loaded_posts; i++ )
 		if ( gState.cached_posts[i] )
 		{
 			free( gState.cached_posts[i] );
 			gState.cached_posts[i] = NULL;
 		}
 
-	free( gState.cached_posts );
+	if ( gState.cached_posts ) free( gState.cached_posts );
 	gState.cached_posts = NULL;
 	if ( gState.opened_post ) free( gState.opened_post );
 	gState.opened_post = NULL;
@@ -211,7 +212,7 @@ int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
 	gState.loaded_page  = page;
 	gState.loaded_posts = msg_buf[3];
 
-	for ( int i = 0; i < post_limit; i++ )
+	for ( unsigned int i = 0; i < post_limit; i++ )
 		if ( gState.cached_posts[ i ] )
 		{
 			free( gState.cached_posts[ i ] );
@@ -232,13 +233,20 @@ int loadPosts( unsigned char* msg_buf, size_t* msg_size, unsigned char page )
 	}
 
 	
-	for ( int i = 0; i < gState.loaded_posts; i++ )
+	for ( unsigned int i = 0; i < gState.loaded_posts; i++ )
 	{
 		Post curr_post;
 		memcpy( &curr_post, scanptr, POST_HEADER_SIZE );
 
-		size_t post_size = curr_post.len_mittente + curr_post.len_oggetto + curr_post.len_testo;
+		uint16_t len_testo;
+		memcpy( &len_testo, &curr_post.len_testo, 2 );
+		size_t post_size = curr_post.len_mittente + curr_post.len_oggetto + len_testo;
 		gState.cached_posts[ i ] = malloc( POST_HEADER_SIZE + post_size + 1 );
+		if ( !gState.cached_posts[ i ] )
+		{
+			sprintf( gState.state_label, "Memoria insufficiente" );
+			return i;
+		}
 
 		*gState.cached_posts[ i ] = curr_post;
 		memcpy( gState.cached_posts[ i ]->data, scanptr + POST_HEADER_SIZE, post_size );
@@ -375,6 +383,8 @@ int main( int argc, char *argv[] )
 
 	/* Impostazioni socket */
 
+	// Timeout per la risposta del server di 10 secondi,
+	// poi la connessione sarà considerata caduta
 	struct timeval timeout;
 	timeout.tv_sec  = 10;
 	timeout.tv_usec = 0;
@@ -390,13 +400,13 @@ int main( int argc, char *argv[] )
 	sigfillset( &sigset );
 	sa.sa_handler   = oob_handler;
 	sa.sa_mask      = sigset;
-	sigaction( SIGURG, &sa, NULL );
+	sigaction( SIGURG, &sa, NULL );		// SIGURG -> oob_handler
 	sa.sa_handler   = resize_handler;
 	sa.sa_mask      = sigset;
-	sigaction( SIGWINCH, &sa, NULL );
+	sigaction( SIGWINCH, &sa, NULL );	// SIGWINCH -> resize_handler
 	sa.sa_handler   = SIG_IGN;
-	sigaction( SIGINT, &sa, NULL );
-	sigaction( SIGPIPE, &sa, NULL );
+	sigaction( SIGINT, &sa, NULL );		// SIGINT -> SIG_IGN (si esce dal programma solo gracefully con Q)
+	sigaction( SIGPIPE, &sa, NULL );	// SIGPIPE -> SIG_IGN (Broken pipe gestita in modo sincrono con check errori su send)
 
 
 	
@@ -428,10 +438,10 @@ int main( int argc, char *argv[] )
 			int len_user, len_pass;
 
 			if ( ( len_user = getValidInput( user, 256, "Nome utente: " ) ) < 0 )
-				exit( EXIT_FAILURE );
+				exitProgram( EXIT_FAILURE );
 			setTerminalMode( TERM_CANON_NOECHO );
 			if ( ( len_pass = getValidInput( pass, 256, "Password: " ) ) < 0 )
-				exit( EXIT_FAILURE );
+				exitProgram( EXIT_FAILURE );
 			setTerminalMode( TERM_CANON );
 
 			msg_buf[0] = CLI_LOGIN;
@@ -445,7 +455,7 @@ int main( int argc, char *argv[] )
 			{
 				printf( "Connessione persa.\n" );
 				fflush( stdout );
-				exit( EXIT_FAILURE );
+				exitProgram( EXIT_FAILURE );
 			}
 
 			if ( *msg_buf == SERV_WELCOME )
@@ -490,7 +500,7 @@ int main( int argc, char *argv[] )
 	gState.page_offset = 0;
 	gState.selected_post = 0;
 	*gState.state_label = '\0';
-	strncpy( gState.board_title, msg_buf + 13, msg_buf[12] + 1 );
+	strncpy( gState.board_title, ( char* )msg_buf + 13, msg_buf[12] + 1 );
 	strncpy( gState.server_addr, s_addr, 100 );
 	gState.user = user;
 	gState.pass = pass;
@@ -499,7 +509,12 @@ int main( int argc, char *argv[] )
 	//gState.quit_enabled = true;
 
 	gState.cached_posts = malloc( sizeof( char* ) * post_limit );
-	for ( int i = 0; i < post_limit; i++ )
+	if ( !gState.cached_posts )
+	{
+		fprintf( stderr, "client: Impossibile allocare memoria per %u post, termino il programma.\n", post_limit );
+		exitProgram( EXIT_FAILURE );
+	}
+	for ( unsigned int i = 0; i < post_limit; i++ )
 		gState.cached_posts[ i ] = NULL;
 
 	while (1)
@@ -553,7 +568,7 @@ resize:
 			gResized = 0;
 		}
 
-		//stdio mi ignora i segnali, sono costretto a fare così
+		//stdio mi ignora i segnali in alcune implementazioni della libc (Bionic), sono costretto a fare così
 		fd_set fdset;
 		FD_ZERO( &fdset );
 		FD_SET( STDIN_FILENO, &fdset );
@@ -597,7 +612,7 @@ resize:
 					action = '\v';
 					goto inserisci;
 				}
-				if ( gState.current_screen == STATE_INTRO )
+				else if ( gState.current_screen == STATE_INTRO )
 				{
 					printf( "Caricamento post...\n\033[?25l" );
 					// carica post...
@@ -607,7 +622,7 @@ resize:
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
-					if ( gState.num_posts )
+					if ( gState.loaded_posts )
 						gState.most_recent_post_shown = gState.cached_posts[ 0 ]->timestamp;
 					gState.current_screen = STATE_LISTING;
 					drawTui( &gState );
@@ -617,7 +632,9 @@ resize:
 					Post *curr_post = gState.cached_posts[ gState.selected_post ];
 					if ( gState.opened_post ) free ( gState.opened_post );
 					uint16_t len_testo;
+					int64_t timestamp;
 					memcpy( &len_testo, &curr_post->len_testo, 2 );
+					memcpy( &timestamp, &curr_post->timestamp, 8 );
 					size_t post_size = POST_HEADER_SIZE + curr_post->len_mittente + curr_post->len_oggetto + len_testo;
 					gState.opened_post = malloc( post_size + 1 );
 					if ( !gState.opened_post )
@@ -627,7 +644,7 @@ resize:
 						break;
 					}
 					memcpy( gState.opened_post, curr_post, post_size );
-					if ( gState.opened_post->timestamp > gState.most_recent_post_shown ) gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
+					if ( timestamp > gState.most_recent_post_shown ) gState.most_recent_post_shown = timestamp;
 					gState.current_screen = STATE_SINGLEPOST;
 					gState.state_label[0] = '\0';
 					gState.post_offset = 0;
@@ -691,9 +708,13 @@ resize:
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
 
-					if ( gState.loaded_posts &&
-					     gState.cached_posts[0]->timestamp > gState.most_recent_post_shown )
-						gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
+					if ( gState.loaded_posts )
+					{
+						int64_t timestamp;
+						memcpy( &timestamp, &gState.cached_posts[0]->timestamp, 8 );
+						if ( timestamp > gState.most_recent_post_shown )
+							gState.most_recent_post_shown = timestamp;
+					}
 
 					if ( loadPosts( msg_buf, &msg_size, --gState.loaded_page ) == -1 )
 					{
@@ -721,9 +742,13 @@ resize:
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
 
-					if ( gState.loaded_posts &&
-					     gState.cached_posts[0]->timestamp > gState.most_recent_post_shown )
-						gState.most_recent_post_shown = gState.cached_posts[0]->timestamp;
+					if ( gState.loaded_posts )
+					{
+						int64_t timestamp;
+						memcpy( &timestamp, &gState.cached_posts[0]->timestamp, 8 );
+						if ( timestamp > gState.most_recent_post_shown )
+							gState.most_recent_post_shown = timestamp;
+					}
 
 					if ( loadPosts( msg_buf, &msg_size, ++gState.loaded_page ) == -1 )
 					{
@@ -846,8 +871,8 @@ resize:
 					msg_buf[0] = CLI_POST;
 					msg_buf[1] = strlen( user );
 					msg_buf[2] = strlen( pass );
-					strcpy( msg_buf + 3, user );
-					strcpy( msg_buf + 3 + strlen( user ), pass );
+					strcpy( ( char* )msg_buf + 3, user );
+					strcpy( ( char* )msg_buf + 3 + strlen( user ), pass );
 
 					Post *newpost = malloc( POST_HEADER_SIZE + strlen( user ) + gState.len_oggetto + gState.len_testo + 1 );
 					if ( !newpost )
@@ -952,9 +977,9 @@ resize:
 					msg_buf[0] = CLI_DELPOST;
 					msg_buf[1] = ( unsigned char )strlen( user );
 					msg_buf[2] = ( unsigned char )strlen( pass );
-					strcpy( msg_buf + 3, user );
-					strcpy( msg_buf + 3 + msg_buf[1], pass );
-					memcpy( msg_buf + 3 + msg_buf[1] + msg_buf[2], gState.current_screen == STATE_SINGLEPOST ? &gState.opened_post->id : &gState.cached_posts[ gState.selected_post ]->id, 4 );
+					strcpy( ( char* )msg_buf + 3, user );
+					strcpy( ( char* )msg_buf + 3 + msg_buf[1], pass );
+					memcpy( ( char* )msg_buf + 3 + msg_buf[1] + msg_buf[2], gState.current_screen == STATE_SINGLEPOST ? &gState.opened_post->id : &gState.cached_posts[ gState.selected_post ]->id, 4 );
 					msg_size = 3 + msg_buf[1] + msg_buf[2] + 4;
 					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
 					if ( ret )
