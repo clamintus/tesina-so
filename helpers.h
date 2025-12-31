@@ -38,4 +38,6 @@ int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len );
 void setTerminalMode( enum terminal_mode mode );
 void restoreTerminal( void );
 
+#ifdef __SWITCH__
 SwkbdTextCheckResult validaOggetto( char* oggetto, size_t len_oggetto );
+#endif

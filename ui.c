@@ -129,7 +129,7 @@ char *stringifyTimestamp( time_t timestamp )
 #define ANSIRST "\033[0m"
 #define ANSIDIS "\033[30m\033[100m"
 #define ANSINEW "\033[1m\033[3m\033[97m\033[5m"
-unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1, unsigned int skip )
+unsigned int printWrapped( char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1, unsigned int skip )
 {
 	unsigned short x_len = x1 - x0 + 1;
 	unsigned short y_len = y1 - y0 + 1;
@@ -138,8 +138,8 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 	//unsigned short y = y0;
 	unsigned int   l = 0;
 
-	const char* curr = str;
-	const char* lines[4096];
+	char* curr = str;
+	char* lines[4096];
 
 	if ( x_len <= 0 || y_len <= 0 )
 		return ( unsigned int )-1;
@@ -148,8 +148,8 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 
 	//printf( "\033[%d;%dH", y, x );
 
-	const char* curline = curr;
-	const char* curword = curr;
+	char* curline = curr;
+	char* curword = curr;
 
 	while ( *curr )
 	//while ( curr - str < size && *curr )
