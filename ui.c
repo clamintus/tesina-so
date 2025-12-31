@@ -413,7 +413,7 @@ int draw_footer( ClientState *state )
 
 	if ( state->current_screen & UI_PAGENAV && state->num_posts > post_limit && state->num_posts != ( unsigned int ) -1 )
 		if ( state->current_layout == LAYOUT_MOBILE )
-			printf( "\033[%d;4H⏪ %s%s ⏩", ROW1,
+			printf( "\033[%d;4H⏪ %s%s ⏩", ROW2,
 							    state->loaded_page > 1 ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
 				                            state->loaded_page < ( state->num_posts - 1 ) / post_limit + 1 ?
 							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST );
