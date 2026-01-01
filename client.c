@@ -535,7 +535,7 @@ oob:
 				else if ( oob_ret == 0 )
 				{
 					gState.current_screen = STATE_ERROR;
-					drawError( "Connessione col server persa." );
+					drawError( &gState, "Connessione col server persa." );
 					while( getchar() != '\n' );
 					exitProgram( EXIT_FAILURE );
 				}
@@ -546,7 +546,7 @@ oob:
 			if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
 			{
 				gState.current_screen = STATE_ERROR;
-				drawError( "Connessione col server persa." );
+				drawError( &gState, "Connessione col server persa." );
 				while ( getchar() != '\n' );
 				exitProgram( EXIT_FAILURE );
 			}
@@ -618,7 +618,7 @@ resize:
 					// carica post...
 					if ( loadPosts( msg_buf, &msg_size, 1 ) == -1 )
 					{
-						drawError( "Connessione persa.\nImpossibile ottenere i post." );
+						drawError( &gState, "Connessione persa.\nImpossibile ottenere i post." );
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
@@ -718,7 +718,7 @@ resize:
 
 					if ( loadPosts( msg_buf, &msg_size, --gState.loaded_page ) == -1 )
 					{
-						drawError( "Connessione persa.\nImpossibile aggiornare i post." );
+						drawError( &gState, "Connessione persa.\nImpossibile aggiornare i post." );
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
@@ -752,7 +752,7 @@ resize:
 
 					if ( loadPosts( msg_buf, &msg_size, ++gState.loaded_page ) == -1 )
 					{
-						drawError( "Connessione persa.\nImpossibile aggiornare i post." );
+						drawError( &gState, "Connessione persa.\nImpossibile aggiornare i post." );
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
@@ -770,7 +770,7 @@ resize:
 				{
 					goto inserisci;
 				}
-				else if ( gState.current_screen & UI_BACK && gState.current_screen != STATE_WRITING )
+				else if ( gState.current_screen & UI_BACK )
 				{
 					if ( gState.opened_post ) free( gState.opened_post );
 					gState.opened_post = NULL;
@@ -854,13 +854,13 @@ resize:
 						}
 						else if ( reauth_ret == -1 )
 						{
-							sprintf( gState.state_label, "Errore di comunicazione" );
+							sprintf( gState.state_label, "Login non riuscito" );
 							drawTui( &gState );
 							gState.state_label[0] = '\0';
 							break;
 						}
-						else if ( reauth_ret == -2 )
-							goto writepost_unauthorized;
+						//else if ( reauth_ret == -2 )
+						//	goto writepost_unauthorized;
 					}
 						
 
@@ -910,7 +910,7 @@ resize:
 						printf( "\033[?25l" );
 						if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
 						{
-							drawError( "Connessione persa.\nImpossibile aggiornare i post." );
+							drawError( &gState, "Connessione persa.\nImpossibile aggiornare i post." );
 							gState.current_screen = STATE_ERROR;
 							break;
 						}
@@ -918,7 +918,7 @@ resize:
 					}
 					else if ( ret == -1 )
 					{
-						drawError( "Connessione persa.\nImpossibile inviare il post!" );
+						drawError( &gState, "Connessione persa.\nImpossibile inviare il post!" );
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
@@ -926,7 +926,7 @@ resize:
 						switch ( ( unsigned char )msg_buf[1] )
 						{
 							case 0x0:
-							      writepost_unauthorized:
+							      //writepost_unauthorized:
 								sprintf( gState.state_label, "Non autorizzato" );
 								break;
 
@@ -968,11 +968,16 @@ resize:
 						          user,
 						  	  gState.opened_post->len_mittente ) ) ) ) )
 				{
-					if ( gState.auth_level < 0 && reauth( msg_buf, &msg_size ) <= 0 )
+					if ( gState.auth_level < 0 )
 					{
-						sprintf( gState.state_label, "Credenziali errate!" );
-						drawTui( &gState );
-						break;
+						int reauth_ret = reauth( msg_buf, &msg_size );
+						if ( reauth_ret <= 0 )
+						{
+							sprintf( gState.state_label, reauth_ret ? "Login non riuscito" : "Credenziali errate!" );
+							drawTui( &gState );
+							gState.state_label[0] = '\0';
+							break;
+						}
 					}
 					msg_buf[0] = CLI_DELPOST;
 					msg_buf[1] = ( unsigned char )strlen( user );
@@ -982,7 +987,7 @@ resize:
 					memcpy( ( char* )msg_buf + 3 + msg_buf[1] + msg_buf[2], gState.current_screen == STATE_SINGLEPOST ? &gState.opened_post->id : &gState.cached_posts[ gState.selected_post ]->id, 4 );
 					msg_size = 3 + msg_buf[1] + msg_buf[2] + 4;
 					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
-					if ( ret )
+					if ( ret > 0 )
 					{
 						sprintf( gState.state_label, "Post cancellato!" );
 						if ( gState.opened_post ) free( gState.opened_post );
@@ -990,7 +995,7 @@ resize:
 						gState.current_screen = STATE_LISTING;
 						if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
 						{
-							drawError( "Connessione persa dopo l'eliminazione del post.\nIl post è stato cancellato." );
+							drawError( &gState, "Connessione persa dopo l'eliminazione del post.\nIl post è stato cancellato." );
 							gState.current_screen = STATE_ERROR;
 							break;
 						}
@@ -999,7 +1004,7 @@ resize:
 					}
 					else if ( ret == -1 )
 					{
-						drawError( "Connessione persa!\nImpossibile cancellare il post." );
+						drawError( &gState, "Connessione persa!\nImpossibile cancellare il post." );
 						gState.current_screen = STATE_ERROR;
 						break;
 					}
@@ -1061,34 +1066,4 @@ resize:
 				break;
 		}
 	}
-
-
-
-	//if ( ( get1 & 0b11011111 ) == 'Q' ) exitProgram( EXIT_SUCCESS );
-	//{
-	//	int get2 = getchar();
-	//	printf( "%d %d\n", get1, get2 );
-	//}
-
-
-	msg_buf[0] = CLI_POST;
-	msg_buf[1] = strlen( user );
-	msg_buf[2] = strlen( pass );
-
-	const char* TEST_MITT = "Sergio";
-	const char* TEST_OGG  = "Prova";
-	const char* TEST_TEXT = "Questo e' un messaggio di prova!!!!!!!!!!!!!!!!!!!!!";
-	
-
-	
-	return 0;
-
-	//for ( int i = 0; i < 10; i++ )
-	//	if ( gLoadedPosts[i] )
-	//	{
-	//		free( gLoadedPosts[i] );
-	//		gLoadedPosts[i] = NULL;
-	//	}
-
-	return 0;
 }
