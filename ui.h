@@ -141,4 +141,4 @@ int updateWinSize( ClientState *state );
 int drawTui( ClientState *state );
 //int drawTui_listView( ClientState *state );
 //int drawTui_readPost( ClientState *state );
-void drawError( char *error_msg );
+void drawError( ClientState *state, const char *error_msg );

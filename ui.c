@@ -764,11 +764,55 @@ int drawTui( ClientState *state )
 	return 0;
 }
 
-void drawError( char *error_msg )
+void drawError( ClientState *state, const char *error_msg )
 {
-	printf( "\033[2J\033[H%s", error_msg );
+	const char* btn = "[ Esci ]";
+	char* lines[10];
+	int   l = 0;
+	int   lmax = strlen( btn );
+	int   x = 1;
+	int   y = 1;
+
+	char* msg = strdup( error_msg );
+	char* msg2 = msg;
+
+	msg = strtok( msg, "\n" );
+	while ( msg )
+	{
+		lines[ l++ ] = msg;
+		msg = strtok( NULL, "\n" );
+	}
+
+	for ( int i = 0; i < l; i++ )
+		if ( strlen( lines[ i ] ) > lmax )
+			lmax = strlen( lines[ i ] );
+
+	if ( state->current_screen != STATE_INTRO )
+	{
+		x = MAX( (int)window.ws_col / 2 - lmax / 2, 1 );
+		y = (int)window.ws_row / 2 - l / 2 - 1;
+
+		printf( ANSIREV );
+		for ( int i = y - 1; i < y + l + 3; i++ )
+			for ( int j = x - 1; j < x + lmax + 1; j++ )
+				printf( "\033[%d;%dH ", i, j );
+		printf( ANSIRST "\033[%d;%dH%s" ANSIREV, y + l + 1, window.ws_col / 2 - strlen( btn ) / 2, btn );
+	}
+
+	for ( int i = 0; i < l; i++ )
+	{
+		if ( state->current_screen == STATE_INTRO )
+			printf( "%s\n", lines[ i ] );
+		else
+			printf( "\033[%d;%dH%s", y + i, x, lines[ i ] );
+	}
 	
+	printf( ANSIRST );
+	if ( state->current_screen == STATE_INTRO )
+		printf( "\nPremi" BTNENT "per uscire." );
 	_fflush( stdout );
+
+	free( msg2 );
 }
 
 
