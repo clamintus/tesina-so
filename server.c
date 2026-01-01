@@ -619,6 +619,8 @@ void* clientSession( void* arg )
 	pthread_sigmask( SIG_BLOCK, &sigset, NULL );
 	printf( "server: Spawnato un nuovo thread per gestire la connessione in entrata di %s\n", inet_ntoa( session->client_addr ) );
 
+	pthread_detach( pthread_self() );
+
 	if ( !gAllowGuests )
 	{
 		/* Login required */
@@ -1063,9 +1065,30 @@ int main( int argc, char *argv[] )
 				warn( "server: Impossibile arrestare la socket della sessione #%d (%s) durante lo spegnimento", i, inet_ntoa( sessions[ i ].client_addr ) );
 		}
 	
-	for ( int i = 0; i < MAXCONNS; i++ )
-		if ( sessions[ i ].tid )
-			pthread_join( sessions[ i ].tid, NULL );
+	//for ( int i = 0; i < MAXCONNS; i++ )
+	//	if ( sessions[ i ].tid )
+	//		pthread_join( sessions[ i ].tid, NULL );
+	
+	// Ormai abbiamo detachato i thread delle sessioni subito per evitare l'accumulo di zombie,
+	// non possiamo più fare pthread_join. Facciamo semplicemente così, che è anche meglio
+	while (1)
+	{
+		int active_sessions = 0;
+
+		sessions_lock();
+		for ( int i = 0; i < MAXCONNS; i++ )
+			if ( sessions[ i ].tid )
+			{
+				active_sessions = 1;
+				break;
+			}
+		sessions_unlock();
+
+		if ( !active_sessions )
+			break;
+
+		usleep( 10000 );
+	}
 
 	closeSocket( s_list );
 	deinitAndExit();

@@ -867,21 +867,21 @@ resize:
 					sprintf( gState.state_label, "Invio del messaggio..." );
 					drawTui( &gState );
 
-					gState.state_label[0] = '\0';
 					msg_buf[0] = CLI_POST;
 					msg_buf[1] = strlen( user );
 					msg_buf[2] = strlen( pass );
 					strcpy( ( char* )msg_buf + 3, user );
 					strcpy( ( char* )msg_buf + 3 + strlen( user ), pass );
 
-					Post *newpost = malloc( POST_HEADER_SIZE + strlen( user ) + gState.len_oggetto + gState.len_testo + 1 );
-					if ( !newpost )
-					{
-						sprintf( gState.state_label, "Errore di memoria" );
-						drawTui( &gState );
-						gState.state_label[0] = '\0';
-						break;
-					}
+					//Post *newpost = malloc( POST_HEADER_SIZE + strlen( user ) + gState.len_oggetto + gState.len_testo + 1 );
+					//if ( !newpost )
+					//{
+					//	sprintf( gState.state_label, "Errore di memoria" );
+					//	drawTui( &gState );
+					//	gState.state_label[0] = '\0';
+					//	break;
+					//}
+					Post *newpost = ( Post *)( msg_buf + 3 + strlen( user ) + strlen( pass ) );
 
 					//uint32_t id = 0x11223344;
 					//uint64_t timestamp = 0xFFFFFFFFFFFFFFFF;
@@ -897,10 +897,10 @@ resize:
 					strcat( newpost->data, gState.buf_testo );
 
 					size_t post_size = POST_HEADER_SIZE + newpost->len_mittente + newpost->len_oggetto + len_testo;
-					memcpy( msg_buf + 3 + strlen( user ) + strlen( pass ), newpost, post_size );
+					//memcpy( msg_buf + 3 + strlen( user ) + strlen( pass ), newpost, post_size );
 					msg_size = 3 + strlen( user ) + strlen( pass ) + post_size;
 					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
-					free( newpost );
+					//free( newpost );
 
 					if ( ret )
 					{
