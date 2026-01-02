@@ -902,7 +902,7 @@ resize:
 					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
 					//free( newpost );
 
-					if ( ret )
+					if ( ret > 0 )
 					{
 						sprintf( gState.state_label, "Post pubblicato!" );
 						drawTui( &gState );
