@@ -1,7 +1,8 @@
 all: client server
 
+CC	:= gcc
 CFLAGS  := -pthread
-LDFLAGS := -pthread
+LDFLAGS := -pthread -static
 
 ifdef RELEASE
 	CFLAGS += -O2
@@ -24,22 +25,22 @@ ifeq ($(DEBUG),2)
 endif
 
 client: client.o helpers.o ui.o
-	gcc $(LDFLAGS) -o client client.o helpers.o ui.o
+	$(CC) $(LDFLAGS) -o client client.o helpers.o ui.o
 
 server: server.o helpers.o
-	gcc $(LDFLAGS) -o server server.o helpers.o
+	$(CC) $(LDFLAGS) -o server server.o helpers.o
 
 client.o: client.c helpers.h types.h
-	gcc -c $(CFLAGS) client.c
+	$(CC) -c $(CFLAGS) client.c
 
 server.o: server.c helpers.h types.h
-	gcc -c $(CFLAGS) server.c
+	$(CC) -c $(CFLAGS) server.c
 
 helpers.o: helpers.c helpers.h
-	gcc -c $(CFLAGS) helpers.c
+	$(CC) -c $(CFLAGS) helpers.c
 
 ui.o: ui.c ui.h
-	gcc -c $(CFLAGS) ui.c
+	$(CC) -c $(CFLAGS) ui.c
 	
 clean:
 	rm client.o server.o helpers.o ui.o client server
