@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <string.h>
 #include <strings.h>
@@ -27,11 +28,13 @@ const int   LISTENQ       = 1024;
 #define MAXPOSTS 2048
 #define MAXUSERS 256
 #define BUF_SIZE 65536
+#define BUF_NPOSTS 50
 
 struct session_data {
 	pthread_t       tid;
 	struct in_addr  client_addr;
 	int             sockfd;
+	unsigned char  *buf;
 } sessions[ MAXCONNS ] = { 0 };
 
 char buffer[BUF_SIZE];
@@ -90,17 +93,19 @@ int loadConfig( void )
 
 		if ( sscanf( buffer, "%[^=]=%[^\n]", key_buf, value_buf ) < 2 )
 		{
-			printf( "loadConfig: impossibile interpretare la riga \"%s\".\n", buffer );
+			fprintf( stderr, "loadConfig: impossibile interpretare la riga \"%s\".\n", buffer );
 			continue;
 		}
 
 		/* actual parsing */
 		if ( !strcmp( key_buf, "AllowGuests" ) )
 		{
-			if ( *value_buf == '1' )
-				gAllowGuests = 1;
-			else if ( *value_buf == '0' )
-				gAllowGuests = 0;
+			if ( value_buf[1] || *value_buf < '0' || *value_buf > '1' )
+			{
+				fprintf( stderr, "loadConfig: valore errato per AllowGuests.\n" );
+				exit( EXIT_FAILURE );
+			}
+			gAllowGuests = *value_buf == '1';
 		}
 		else if ( !strcmp( key_buf, "Port" ) )
 		{
@@ -124,10 +129,13 @@ int loadConfig( void )
 	return 0;
 }
 
+void unloadDatabase( void );
+void unloadUsers( void );
+
 int loadDatabase( void )
 {
 	FILE* fp;
-	char* endptr;
+	//char* endptr;
 	//char id_buf[9];
 	//char mittente[256];
 	//char oggetto[256];
@@ -140,7 +148,6 @@ int loadDatabase( void )
 	unsigned long len_oggetto;
 	unsigned long len_testo;
 	signed long long timestamp;
-	int count = 0;
         
     dbfileopen:
 	fp = fopen( DATABASE_PATH, "r" );
@@ -191,6 +198,7 @@ int loadDatabase( void )
 		{
 			fprintf( stderr, "loadDatabase: memoria insufficiente\n" );
 			fclose( fp );
+			unloadDatabase();
 			exit( EXIT_FAILURE );
 		}
 		newpost->id = strtoul( id_buf, NULL, 16 );
@@ -238,7 +246,7 @@ int storeDatabase( void )
 		memcpy( &timestamp, &curr_post->timestamp, 8 );
 		// for ( int j = 0; j < sizeof( curr_post->id ); j++ )
 		// 	fprintf( fp, "%02x", ( ( unsigned char *)&curr_post->id )[ j ] );
-		if ( fprintf( fp, "%08x\x1f%lld\x1f", curr_post->id, timestamp ) < 11 )
+		if ( fprintf( fp, "%08x\x1f%" PRId64 "\x1f", curr_post->id, timestamp ) < 11 )
 		{
 database_error:
 			if ( fclose( fp ) == EOF )
@@ -293,21 +301,21 @@ void unloadDatabase( void )
 	gPostCount = 0;
 }
 
-int delDatabaseEntry( uint32_t entry_id )
-{
-	if ( !entry_id )
-		return -1;
-	for ( int i = 0; i < gPostCount; i++ )
-	{
-		if ( gPosts[ i ]->id == entry_id )
-		{
-			gPosts[ i ] = 0;
-			return 0;
-		}
-	}
-
-	return -1;
-}
+//int delDatabaseEntry( uint32_t entry_id )
+//{
+//	if ( !entry_id )
+//		return -1;
+//	for ( int i = 0; i < gPostCount; i++ )
+//	{
+//		if ( gPosts[ i ]->id == entry_id )
+//		{
+//			gPosts[ i ] = 0;
+//			return 0;
+//		}
+//	}
+//
+//	return -1;
+//}
 
 int loadUsers( void )
 {
@@ -329,11 +337,16 @@ int loadUsers( void )
 		{
 			fprintf( stderr, "loadUsers: Il server ha troppi utenti configurati! Ne puoi impostare massimo %d.\n", MAXUSERS );
 			fclose( fp );
+			unloadDatabase();
+			unloadUsers();
 			exit( EXIT_FAILURE );
 		}
 
 		if ( sscanf( buffer, "%[^\x1f]\x1f%[^\x1f]\x1f%d", user, pass, is_admin + gUserCount ) < 3 )
+		{
+			fprintf( stderr, "loadUsers: impossibile interpretare la riga \"%s\".\n", buffer );
 			continue;
+		}
 
 		gUsers[ gUserCount ][ 0 ] = strdup( user );
 		gUsers[ gUserCount ][ 1 ] = strdup( pass );
@@ -341,6 +354,8 @@ int loadUsers( void )
 		{
 			fprintf( stderr, "loadUsers: memoria insufficiente\n" );
 			fclose( fp );
+			unloadDatabase();
+			unloadUsers();
 			exit( EXIT_FAILURE );
 		}
 
@@ -394,8 +409,8 @@ void deinitAndErr( int eval, const char* fmt )
 	//database_unlock();
 	warn( fmt );
 #ifdef POSIX_MUTEX
-	while ( pthread_mutex_destroy( &mutexes[0] ) );
-	while ( pthread_mutex_destroy( &mutexes[1] ) );
+	while ( pthread_mutex_destroy( &mutexes[0] ) );	// non dovrebbero mai fallire perché
+	while ( pthread_mutex_destroy( &mutexes[1] ) ); // i thread non dovrebbero ancora esistere
 #else	
 	if ( semctl( semfd, 0, IPC_RMID ) < 0 )
 		err( eval, "server: Impossibile eliminare il semaforo" );
@@ -410,11 +425,13 @@ void deinitAndExit( void )
 	unloadUsers();
 	database_unlock();
 #ifdef POSIX_MUTEX
-	if ( pthread_mutex_destroy( &mutexes[0] ) || pthread_mutex_destroy( &mutexes[1] ) )
+	int mutex1_destroyed = 0;
+	if ( pthread_mutex_destroy( &mutexes[0] ) || !( mutex1_destroyed = 1 ) || pthread_mutex_destroy( &mutexes[1] ) )
 	{
 		fprintf( stderr, "server: ATTENZIONE: Non sono riuscito a eliminare il mutex perché un thread lo sta tenendo ancora bloccato. Non dovrebbero esserci altri thread attivi a questo punto!" );
 		// Evita di perdere dati preferendo un deadlock con CPU al 100%. Questo è chiaramente uno scenario catastrofico
-		while ( pthread_mutex_destroy( &mutexes[0] ) );
+		if ( !mutex1_destroyed )
+			while ( pthread_mutex_destroy( &mutexes[0] ) );
 		while ( pthread_mutex_destroy( &mutexes[1] ) );
 	}
 #else
@@ -447,7 +464,7 @@ retry_semaction:
 		//deinitAndErr( EXIT_FAILURE, "server: Impossibile bloccare il semaforo, arresto forzato" );
 
 		// C'è un problema grave (magari semaforo rimosso), il sistema è in stato inconsistente. Termino tutto il processo
-		warn( "server: Impossibile bloccare il semaforo, arresto forzato." );
+		warn( "server: Impossibile bloccare il semaforo, arresto forzato" );
 		exit( EXIT_FAILURE );
 	}
 #endif
@@ -465,20 +482,22 @@ void closeSocket( int sockfd )
 /*	scambia (SOCK, BUF, LEN, RESP):
 	 - codifica BUF -> network order
 	 - invia LEN bytes
-	 - ricevi in timeout di 1 minuto
-	 - se non ricevuto: riprova poi closeSocket -> -1
-	 - se ricevuto non RESP: closeSocket -> 1
-	 - se ricevuto RESP: decodifica BUF -> host order -> ritorna (0)	*/
+	 - ricevi in timeout di n minuti
+	 - se ricevuto -> decodifica BUF -> host order
+	 - se ricevuto RESP -> 1
+	 - se ricevuto non RESP -> 0
+
+	 - Broken pipe, timeout, conn. reset -> -1			*/
 
 int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_Frametype resp )
 {
-	int ret;
-	uint16_t tmp_u16;
-	uint32_t tmp_u32;
-	uint64_t tmp_u64;
+	//int ret;
+	//uint16_t tmp_u16;
+	//uint32_t tmp_u32;
+	//uint64_t tmp_u64;
 	//char encode_buf[8];
 	
-	uint8_t value_u8;
+	//uint8_t value_u8;
 
 	switch ( *msg_buf )
 	{
@@ -489,7 +508,7 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 
 		case SERV_ENTRIES:
 			unsigned char* scanptr = msg_buf;
-			int 	       data_length;
+			unsigned int   data_length;
 			uint8_t        n       = scanptr[3];
 			conv_u16( msg_buf + 1, TO_NETWORK );	// n_posts
 			scanptr += 4;
@@ -511,13 +530,24 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 			break;
 	}
 
-	while ( send( sockfd, msg_buf, *len, 0 ) < 0 )
-	{
-		if ( errno != EINTR )
-			return -1;
-	}
-
+	ssize_t sc;
 	ssize_t rc;
+	size_t  n_to_send = *len;
+	size_t 	n_to_receive;
+
+	while ( n_to_send &&
+	        ( sc = send( sockfd, msg_buf, n_to_send, 0 ) ) < ( ssize_t )n_to_send )
+	{
+		if ( sc == -1 )
+		{
+			if ( errno == EINTR )
+				continue;
+
+			return -1;
+		}
+
+		n_to_send -= sc;
+	}
 
 	while ( ( rc = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
 	{
@@ -527,8 +557,6 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 		return -1;
 	}
 	*len += rc;
-
-	size_t 	n_to_receive;
 
 	/* Receive and decode */
 	switch ( *msg_buf )
@@ -604,15 +632,25 @@ inline static void notifyAllClientsExcept( struct session_data *sender )
 		send( targets[ i ], "!", 1, MSG_OOB | MSG_NOSIGNAL );
 }		
 
+void closeSession( struct session_data *session )
+{
+	closeSocket( session->sockfd );
+	free( session->buf );
+	sessions_lock();
+	session->tid = 0;
+	sessions_unlock();
+	printf( "server: Sessione di %s terminata\n", inet_ntoa( session->client_addr ) );
+}
+
 
 void* clientSession( void* arg )
 {
 	struct session_data *session = ( struct session_data *)arg;
 	sigset_t            sigset;
-	unsigned char	    client_user[256];
-	unsigned char	    client_pass[256];
+	char		    client_user[256];
+	char		    client_pass[256];
 	int 		    user_auth_level = -1;
-	unsigned char 	    msg_buf[655360];
+	unsigned char* 	    msg_buf = session->buf;
 	size_t 		    msg_size;
 
 	sigfillset( &sigset );
@@ -633,20 +671,14 @@ void* clientSession( void* arg )
 			
 			if ( ret < 0 )
 			{
-				closeSocket( session->sockfd );
-				sessions_lock();
-				session->tid = 0;
-				sessions_unlock();
+				closeSession( session );
 				return NULL;
 			}
 			else if ( ret )
 			{
 				fprintf( stderr, "server (#%lu): Ricevuto campo inaspettato (%#08b diverso da LOGIN). Chiudo la connessione.\n",
 						(unsigned long)session->tid, *msg_buf );
-				closeSocket( session->sockfd );
-				sessions_lock();
-				session->tid = 0;
-				sessions_unlock();
+				closeSession( session );
 				return NULL;
 			}
 			
@@ -675,7 +707,7 @@ void* clientSession( void* arg )
 	int64_t local_time = ( int64_t )time( NULL );
 	memcpy( msg_buf + 4, &local_time, 8 );
 	msg_buf[12] = ( unsigned char )strlen( gBoardTitle );
-	strcpy( msg_buf + 13, gBoardTitle );
+	strcpy( ( char* )msg_buf + 13, gBoardTitle );
 	msg_size = 13 + msg_buf[12];
 
 	/* Main loop */
@@ -684,11 +716,7 @@ void* clientSession( void* arg )
 		int ret = SendAndGetResponse( session->sockfd, msg_buf, &msg_size, 0 );
 		if ( ret < 0 )
 		{
-			printf( "server: Sessione di %s terminata\n", inet_ntoa( session->client_addr ) );
-			closeSocket( session->sockfd );
-			sessions_lock();
-			session->tid = 0;
-			sessions_unlock();
+			closeSession( session );
 			return NULL;
 		}
 
@@ -699,6 +727,8 @@ void* clientSession( void* arg )
 				uint8_t        limit   = msg_buf[2];
 				uint8_t	       count   = 0;
 				unsigned char* scanptr = msg_buf + 4;
+
+				if ( limit > BUF_NPOSTS ) limit = BUF_NPOSTS;
 
 				database_lock();
 				//for ( unsigned int i = (page - 1) * limit; i < page * limit; i++ )
@@ -871,6 +901,7 @@ void* clientSession( void* arg )
 				{
 					database_unlock();
 					fprintf( stderr, "server: Impossibile aggiornare il database dei messaggi" );
+					closeSession( session );
 					return NULL;
 				}
 
@@ -893,7 +924,6 @@ void* clientSession( void* arg )
 					break;
 				}
 
-				uint16_t post_count = gPostCount;	// qui non locko perché tanto è inutile
 				msg_buf[0] = SERV_WELCOME;
 				msg_buf[1] = ( unsigned char )user_auth_level;
 				// Possiamo lasciare anche garbage, tanto il client non li leggerà
@@ -925,7 +955,7 @@ int main( int argc, char *argv[] )
 	struct sockaddr_in client_addr;
 	struct sigaction   sa  = { 0 };
 	struct sigaction   sa2 = { 0 };
-	int sin_size;
+	unsigned int sin_size;
 
 	sa.sa_handler  = term_handler;
 	sa2.sa_handler = SIG_IGN;
@@ -1030,6 +1060,7 @@ int main( int argc, char *argv[] )
 				slot = i;
 				break;
 			}
+		sessions_unlock();
 
 		if ( slot == -1 )
 		{
@@ -1040,7 +1071,16 @@ int main( int argc, char *argv[] )
 
 		sessions[ slot ].sockfd  = s_client;
 		sessions[ slot ].client_addr = client_addr.sin_addr;
-		sessions_unlock();
+		sessions[ slot ].buf = malloc( BUF_SIZE * BUF_NPOSTS );
+		if ( !sessions[ slot ].buf )
+		{
+			fprintf( stderr, "server: Impossibile allocare %d byte per lo scambio di messaggi, respingo la connessione in entrata.\n", BUF_SIZE * BUF_NPOSTS );
+			closeSocket( s_client );
+			continue;
+		}
+#ifdef DEBUG
+		printf( "server: Allocati %d byte per lo scambio di messaggi della nuova sessione\n", BUF_SIZE * BUF_NPOSTS );
+#endif
 
 		if ( pthread_create( &sessions[ slot ].tid, NULL, clientSession, &sessions[ slot ] ) )
 		{

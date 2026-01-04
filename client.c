@@ -21,15 +21,21 @@
 
 #define OGGETTO_MAXLEN 255
 #define TESTO_MAXLEN 60000
+#define BUF_SIZE 65536
+#define BUF_NPOSTS 50
 
-int   s_sock;
+int	       s_sock;
 //Post *gLoadedPosts[10] = { 0 };
-ClientState gState;
+ClientState    gState;
+unsigned char *msg_buf;
+size_t	       msg_size;
+char	      *fb;
+unsigned int   post_limit;
+
 
 volatile sig_atomic_t gNewDataAvailable = 0;
 volatile sig_atomic_t gResized = 0;
 
-unsigned int post_limit;
 extern unsigned int max_posts_per_page;
 extern struct winsize window;
 
@@ -178,6 +184,11 @@ void exitProgram( int exit_code )
 			free( gState.cached_posts[i] );
 			gState.cached_posts[i] = NULL;
 		}
+	
+	if ( msg_buf ) free( msg_buf );
+	msg_buf = NULL;
+	if ( fb ) free( fb );
+	fb = NULL;
 
 	if ( gState.cached_posts ) free( gState.cached_posts );
 	gState.cached_posts = NULL;
@@ -311,8 +322,6 @@ int main( int argc, char *argv[] )
 	char 		    user[256];
 	char 		    pass[256];
 	int  		    auth_level = -1;		/* 1 amministratore, 0: utente standard, -1: anonimo */
-	unsigned char  	    msg_buf[655360];
-	size_t		    msg_size;
 	struct sockaddr_in  servaddr;
 	struct hostent     *he;
 	struct sigaction    sa = { 0 };
@@ -327,16 +336,28 @@ int main( int argc, char *argv[] )
 		exit( EXIT_FAILURE );
 	}
 
+	if ( ( msg_buf = malloc( BUF_SIZE * BUF_NPOSTS ) ) == NULL )
+	{
+		fprintf( stderr, "client: Impossibile allocare %d byte per lo scambio dei messaggi\n", BUF_SIZE * BUF_NPOSTS );
+		exit( EXIT_FAILURE );
+	}
+
 
 	/* Impostazione buffer I/O e grafica */
 
-	char *fb;
 	if ( updateWinSize( &gState ) )
+	{
+		free( msg_buf );
 		err( EXIT_FAILURE, "client: Impossibile ottenere le dimensioni della finestra" );
+	}
 	post_limit = max_posts_per_page;
+	if ( post_limit > BUF_NPOSTS ) post_limit = BUF_NPOSTS;
 	fb = malloc( window.ws_row * window.ws_col );
 	if ( fb == NULL )
+	{
+		free( msg_buf );
 		err( EXIT_FAILURE, "client: Impossibile allocare memoria per il framebuffer" );
+	}
 
 	fflush( stdout );
 	if ( setvbuf( stdin, NULL, _IONBF, 0 ) )
@@ -357,6 +378,8 @@ int main( int argc, char *argv[] )
 		if ( ( he = gethostbyname( s_addr ) ) == NULL )
 		{
 			printf( "fallita.\n" );
+			free( msg_buf );
+			free( fb );
 			exit( EXIT_FAILURE );
 		}
 
@@ -369,7 +392,11 @@ int main( int argc, char *argv[] )
 	/* Connessione al server della bacheca */
 
 	if ( ( s_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
+	{
+		free( msg_buf );
+		free( fb );
 		err( EXIT_FAILURE, "client: Errore nella creazione della socket" );
+	}
 
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port   = htons( (unsigned short int)s_port );
@@ -378,7 +405,11 @@ int main( int argc, char *argv[] )
 	fflush( stdout );
 
 	if ( connect( s_sock, (struct sockaddr *)&servaddr, sizeof( servaddr ) ) < 0 )
+	{
+		free( msg_buf );
+		free( fb );
 		err( EXIT_FAILURE, "client: impossibile connettersi al server" );
+	}
 
 
 	/* Impostazioni socket */
