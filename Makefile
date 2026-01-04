@@ -2,7 +2,7 @@ all: client server
 
 CC	:= gcc
 CFLAGS  := -pthread
-LDFLAGS := -pthread -static
+LDFLAGS := -pthread
 
 ifdef RELEASE
 	CFLAGS += -O2
