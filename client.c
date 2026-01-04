@@ -107,11 +107,10 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 
 	/* Invio il pacchetto e ricevo il primo byte della risposta, che ne identifica il tipo */
 
-	while ( send( sockfd, msg_buf, *len, 0 ) < 0 )
+	if ( sockSendAll( sockfd, msg_buf, *len ) < 0 )
 	{
-		if ( errno != EINTR )
-			// Broken pipe, Connection reset, Timed out...
-			return -1;
+		// Broken pipe, Connection reset, Timed out...
+		return -1;
 	}
 
 	ssize_t rc;

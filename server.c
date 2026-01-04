@@ -484,8 +484,8 @@ void closeSocket( int sockfd )
 	 - invia LEN bytes
 	 - ricevi in timeout di n minuti
 	 - se ricevuto -> decodifica BUF -> host order
-	 - se ricevuto RESP -> 1
-	 - se ricevuto non RESP -> 0
+	 - se ricevuto RESP -> 0
+	 - se ricevuto non RESP -> 1
 
 	 - Broken pipe, timeout, conn. reset -> -1			*/
 
@@ -532,22 +532,9 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 
 	ssize_t sc;
 	ssize_t rc;
-	size_t  n_to_send = *len;
-	size_t 	n_to_receive;
 
-	while ( n_to_send &&
-	        ( sc = send( sockfd, msg_buf, n_to_send, 0 ) ) < ( ssize_t )n_to_send )
-	{
-		if ( sc == -1 )
-		{
-			if ( errno == EINTR )
-				continue;
-
-			return -1;
-		}
-
-		n_to_send -= sc;
-	}
+	if ( ( sc = sockSendAll( sockfd, msg_buf, *len ) ) < 0 )
+		return -1;
 
 	while ( ( rc = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
 	{
@@ -557,6 +544,8 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Client_
 		return -1;
 	}
 	*len += rc;
+
+	size_t 	n_to_receive;
 
 	/* Receive and decode */
 	switch ( *msg_buf )
@@ -650,7 +639,7 @@ void* clientSession( void* arg )
 	char		    client_user[256];
 	char		    client_pass[256];
 	int 		    user_auth_level = -1;
-	unsigned char* 	    msg_buf = session->buf;
+	unsigned char* 	    msg_buf = session->buf;	// buffer enorme (buffer o buffet?) gentilmente allocato dal main thread
 	size_t 		    msg_size;
 
 	sigfillset( &sigset );
@@ -1087,6 +1076,7 @@ int main( int argc, char *argv[] )
 			warn( "server: Impossibile spawnare un nuovo thread per processare la sessione di %s. Chiudo la connessione.\nMotivo",
 					inet_ntoa( client_addr.sin_addr ) );
 			closeSocket( s_client );
+			free( sessions[ slot ].buf );
 			sessions_lock();
 			sessions[ slot ].tid = 0;
 			sessions_unlock();

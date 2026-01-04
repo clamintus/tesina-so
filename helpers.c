@@ -103,10 +103,10 @@ ssize_t getPostSize( Post *post )
 //	return 2 + len_user + len_pass;
 //}
 
-int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
+ssize_t sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
 {
-	int n_left = len;
-	int ret;
+	size_t  n_left = len;
+	ssize_t ret;
 
 	while ( n_left )
 	{
@@ -124,7 +124,28 @@ int sockReceiveAll( int sockfd, unsigned char* msg_buf, size_t len )
 		n_left  -= ret;
 	}
 
-	return len;
+	return ( ssize_t )len;
+}
+
+ssize_t sockSendAll( int sockfd, unsigned char* msg_buf, size_t len )
+{
+	size_t  n_left = len;
+	ssize_t ret;
+
+	while ( n_left )
+	{
+		if ( ( ret = send( sockfd, msg_buf, n_left, 0 ) ) < 0 )
+		{
+			if ( errno == EINTR )
+				ret = 0;
+			else
+				return -1;
+		}
+		msg_buf += ret;
+		n_left  -= ret;
+	}
+
+	return ( ssize_t )len;
 }
 
 void setTerminalMode( enum terminal_mode mode )
