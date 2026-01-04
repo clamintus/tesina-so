@@ -187,8 +187,6 @@ void exitProgram( int exit_code )
 	
 	if ( msg_buf ) free( msg_buf );
 	msg_buf = NULL;
-	if ( fb ) free( fb );
-	fb = NULL;
 
 	if ( gState.cached_posts ) free( gState.cached_posts );
 	gState.cached_posts = NULL;
@@ -197,6 +195,9 @@ void exitProgram( int exit_code )
 
 	setTerminalMode( TERM_CANON );
 	printf( "\033[?25h" );	// show cursor
+	fflush( stdout );
+	setvbuf( stdout, NULL, _IONBF, 0 );
+	free( fb );
 	exit( exit_code );
 }
 
@@ -379,6 +380,8 @@ int main( int argc, char *argv[] )
 		{
 			printf( "fallita.\n" );
 			free( msg_buf );
+			fflush( stdout );
+			setvbuf( stdout, NULL, _IONBF, 0 );
 			free( fb );
 			exit( EXIT_FAILURE );
 		}
@@ -394,7 +397,6 @@ int main( int argc, char *argv[] )
 	if ( ( s_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 	{
 		free( msg_buf );
-		free( fb );
 		err( EXIT_FAILURE, "client: Errore nella creazione della socket" );
 	}
 
@@ -407,7 +409,6 @@ int main( int argc, char *argv[] )
 	if ( connect( s_sock, (struct sockaddr *)&servaddr, sizeof( servaddr ) ) < 0 )
 	{
 		free( msg_buf );
-		free( fb );
 		err( EXIT_FAILURE, "client: impossibile connettersi al server" );
 	}
 
