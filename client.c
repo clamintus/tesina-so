@@ -458,7 +458,12 @@ int main( int argc, char *argv[] )
 		exitProgram( EXIT_FAILURE );
 	}
 
-	if ( *msg_buf == SERV_AUTHENTICATE )
+	if ( *msg_buf == SERV_BYE )
+	{
+		printf( "Il server è pieno o è momentaneamente non disponibile.\n" );
+		exitProgram( EXIT_SUCCESS );
+	}
+	else if ( *msg_buf == SERV_AUTHENTICATE )
 	{
 		setTerminalMode( TERM_CANON );
 		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", s_addr );

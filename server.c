@@ -120,7 +120,7 @@ int loadConfig( void )
 			strncpy( gBoardTitle, value_buf, 256 + 1 );
 	}
 
-	while ( fclose( fp ) )
+	if ( fclose( fp ) )
 	{
 		if ( errno != EINTR )
 			err( EXIT_FAILURE, "loadConfig: errore nella close" );
@@ -213,7 +213,7 @@ int loadDatabase( void )
 		gPosts[ gPostCount++ ] = newpost;
 	}
 
-	while ( fclose( fp ) )
+	if ( fclose( fp ) )
 	{
 		if ( errno != EINTR )
 			err( EXIT_FAILURE, "loadDatabase: errore nella close" );
@@ -274,7 +274,7 @@ database_error:
 		goto database_error;
 	}
 	
-	while ( fclose( fp ) )
+	if ( fclose( fp ) )
 	{
 		if ( errno != EINTR )
 			goto database_error;
@@ -362,7 +362,7 @@ int loadUsers( void )
 		gUserCount++;
 	}
 
-	while ( fclose( fp ) )
+	if ( fclose( fp ) )
 	{
 		if ( errno != EINTR )
 			err( EXIT_FAILURE, "loadUsers: errore nella close" );
@@ -472,10 +472,12 @@ retry_semaction:
 
 void closeSocket( int sockfd )
 {
-	while ( close( sockfd ) < 0 )
+	if ( close( sockfd ) < 0 )
 	{
 		if ( errno != EINTR )
+		{
 			warn( "server: Errore durante la close del socket" );
+		}
 	}
 }
 
@@ -629,6 +631,7 @@ void closeSession( struct session_data *session )
 	session->tid = 0;
 	sessions_unlock();
 	printf( "server: Sessione di %s terminata\n", inet_ntoa( session->client_addr ) );
+	fflush( stdout );
 }
 
 
@@ -644,7 +647,6 @@ void* clientSession( void* arg )
 
 	sigfillset( &sigset );
 	pthread_sigmask( SIG_BLOCK, &sigset, NULL );
-	printf( "server: Spawnato un nuovo thread per gestire la connessione in entrata di %s\n", inet_ntoa( session->client_addr ) );
 
 	pthread_detach( pthread_self() );
 
@@ -665,7 +667,7 @@ void* clientSession( void* arg )
 			}
 			else if ( ret )
 			{
-				fprintf( stderr, "server (#%lu): Ricevuto campo inaspettato (%#08b diverso da LOGIN). Chiudo la connessione.\n",
+				fprintf( stderr, "server (#%lu): Ricevuto campo inaspettato (%#010b diverso da LOGIN). Chiudo la connessione.\n",
 						(unsigned long)session->tid, *msg_buf );
 				closeSession( session );
 				return NULL;
@@ -726,10 +728,7 @@ void* clientSession( void* arg )
 					{
 						//if ( i >= gPostCount )
 						if ( i < 0 )
-						{
-							//semunlock();
 							break;
-						}
 
 						Post *curr_post = gPosts[i];
 
@@ -916,6 +915,7 @@ void* clientSession( void* arg )
 				msg_buf[0] = SERV_WELCOME;
 				msg_buf[1] = ( unsigned char )user_auth_level;
 				// Possiamo lasciare anche garbage, tanto il client non li leggerà
+				// perché in questa fase il client invierà CLI_LOGIN solo in caso di reauth
 				//memcpy( msg_buf + 2, &gPostCount, 2 );
 				//int64_t local_time = ( int64_t )time( NULL );
 				//memcpy( msg_buf + 4, &local_time, 8 );
@@ -940,6 +940,7 @@ int main( int argc, char *argv[] )
 {
 	int s_list;
 	int s_client;
+	int fd_dummy;
 	struct sockaddr_in serv_addr;
 	struct sockaddr_in client_addr;
 	struct sigaction   sa  = { 0 };
@@ -950,7 +951,7 @@ int main( int argc, char *argv[] )
 	sa2.sa_handler = SIG_IGN;
 	sigaction( SIGPIPE, &sa2, NULL );
 	sigaction( SIGINT,  &sa,  NULL );
-	sigaction( SIGTERM, &sa2, NULL );
+	sigaction( SIGTERM, &sa,  NULL );
 
 #ifdef POSIX_MUTEX
 	pthread_mutex_init( &mutexes[0], NULL );
@@ -975,7 +976,7 @@ int main( int argc, char *argv[] )
 	        while ( ( db_fp = creat( DATABASE_PATH, 0666 ) ) < 0 )
 			if ( errno != EINTR )
 				err( EXIT_FAILURE, "Impossibile creare il file database" );
-		while ( close( db_fp ) < 0 )
+		if  ( close( db_fp ) < 0 )
 			if ( errno != EINTR )
 				err( EXIT_FAILURE, "Impossibile chiudere il nuovo database" );
 	}
@@ -985,9 +986,9 @@ int main( int argc, char *argv[] )
 	        while ( ( userdb_fp = creat( USERDB_PATH, 0666 ) ) < 0 )
 			if ( errno != EINTR )
 				err( EXIT_FAILURE, "Impossibile creare il file utenti" );
-		while ( close( userdb_fp ) < 0 )
+		if ( close( userdb_fp ) < 0 )
 			if ( errno != EINTR )
-				err( EXIT_FAILURE, "Impossibile chiudere il nuovo database" );
+				err( EXIT_FAILURE, "Impossibile chiudere il nuovo file utenti" );
 	}
 
 	if ( gUserCount == 0 && !gAllowGuests )
@@ -1003,6 +1004,9 @@ int main( int argc, char *argv[] )
 
 	if ( ( s_list = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 		deinitAndErr( EXIT_FAILURE, "server: Errore nella creazione della socket" );
+
+	if ( ( fd_dummy = dup( s_list ) ) < 0 )
+		deinitAndErr( EXIT_FAILURE, "server: Errore nell'istanziazione del descriptor di riserva" );
 
 	int reuse = 1;
 	if ( setsockopt( s_list, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof( reuse ) ) == -1 )
@@ -1020,12 +1024,87 @@ int main( int argc, char *argv[] )
 		deinitAndErr( EXIT_FAILURE, "server: Impossibile ascoltare sulla porta" );
 	printf( "server: In ascolto sulla porta %d\n", gPort );
 
-	sin_size = sizeof( client_addr );
+	close( 0 );	// risparmiamo una entry della tabella dei file descriptors per le connessioni
+
 	while (1)
 	{
-		if ( ( s_client = accept( s_list, ( struct sockaddr *)&client_addr, &sin_size ) ) < 0 )
+		// Fix per logica di accept() nel kernel Linux: se la tabella FD è piena, ritorna EMFILE anche senza connessioni!
+		// Senza fare polling su socket in ascolto avremmo un loop infinito
+		fd_set s_list_fdset;
+		FD_ZERO( &s_list_fdset );
+		FD_SET( s_list, &s_list_fdset );
+		if ( select( s_list+1, &s_list_fdset, NULL, NULL, NULL ) == -1 )
 		{
 			if ( errno != EINTR )
+				warn( "server: Errore nella select" );
+
+			// Interrotto da SIGINT/SIGTERM per arrestare il server? Controlliamo
+			if ( gShutdown )
+				break;
+
+			continue;
+		}
+
+		sin_size = sizeof( client_addr );
+		if ( ( s_client = accept( s_list, ( struct sockaddr *)&client_addr, &sin_size ) ) < 0 )
+		{
+			if ( errno == EMFILE || errno == ENFILE )
+			{
+				// Stiamo gestendo il massimo di connessioni per processo/sistema,
+				// sbrighiamoci a rifiutare il client e ritorniamo responsivi per gli altri
+
+				if ( fd_dummy == -1 )
+				{
+					// Questa è una situazione catastrofica.
+					// Per qualche motivo non avevamo il descriptor di riserva,
+					// ora non possiamo neanche accettare questa connessione.
+
+					// Potremmo aspettare che uno slot della tabella si liberi,
+					// ma considerando le circostanze termino il server per stato inconsistente
+					fprintf( stderr, "server: Tabella FD riempita dopo aver perso il descriptor di riserva! Termino tutte le sessioni.\n" );
+					break;
+				}
+
+				printf( "server: Tabella FD piena, respingo le connessioni in entrata.\n" );
+				close( fd_dummy );
+
+				// Non vogliamo bloccarci in questa accept, se per qualche ragione non dovessimo connetterci
+				// (connessione chiusa dal client, backlog TCP svuotato dal kernel...) non ci interessa,
+				// anzi il nostro problema è già risolto dato che ora il backlog è vuoto
+				int s_list_flags;
+				s_list_flags = fcntl( s_list, F_GETFL );
+				fcntl( s_list, F_SETFL, s_list_flags | O_NONBLOCK );
+				while (1)
+				{
+					sin_size = sizeof( client_addr );
+					s_client = accept( s_list, ( struct sockaddr *)&client_addr, &sin_size );
+					
+					if ( s_client == -1 )
+					{
+						if ( errno == EAGAIN || errno == EWOULDBLOCK )
+						{
+							printf( "server: Coda di connessioni in eccesso smaltita.\n" );
+							break;
+						}
+						
+						warn( "server: Errore nel flush della connessione in eccesso" );
+					}
+					else
+					{
+						unsigned char byebyte = SERV_BYE;
+						send( s_client, &byebyte, 1, MSG_NOSIGNAL | MSG_DONTWAIT );
+						close( s_client );
+						printf( "server: Chiusa una connessione in eccesso.\n" );
+					}
+				}
+
+				fcntl( s_list, F_SETFL, s_list_flags );
+
+				if ( ( fd_dummy = dup( s_list ) ) < 0 )
+					warn( "server: Impossibile reistanziare il descriptor di riserva. Camminiamo su un filo sottilissimo! Alla prossima congestione il server verrà terminato" );
+			}
+			
+			else if ( errno != EINTR )
 				warn( "server: Impossibile accettare una connessione in entrata" );
 
 			// Interrotto da SIGINT/SIGTERM per arrestare il server? Controlliamo
@@ -1054,6 +1133,8 @@ int main( int argc, char *argv[] )
 		if ( slot == -1 )
 		{
 			printf( "server: Il server è pieno, respingo la connessione in entrata.\n" );
+			unsigned char byebyte = SERV_BYE;
+			send( s_client, &byebyte, 1, MSG_NOSIGNAL | MSG_DONTWAIT );
 			closeSocket( s_client );
 			continue;
 		}
@@ -1081,6 +1162,8 @@ int main( int argc, char *argv[] )
 			sessions[ slot ].tid = 0;
 			sessions_unlock();
 		}
+		else
+			printf( "server: Spawnato un nuovo thread per gestire la connessione in entrata di %s\n", inet_ntoa( sessions[ slot ].client_addr ) );
 
 	}
 
@@ -1120,6 +1203,7 @@ int main( int argc, char *argv[] )
 		usleep( 10000 );
 	}
 
+	close( fd_dummy );
 	closeSocket( s_list );
 	deinitAndExit();
 }
