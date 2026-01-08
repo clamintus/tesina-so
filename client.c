@@ -29,15 +29,17 @@
 
 #define OGGETTO_MAXLEN 255
 #define TESTO_MAXLEN 60000
+#define BUF_SIZE 65536
+#define BUF_NPOSTS 50
 
-int   s_sock;
+int	       s_sock;
 //Post *gLoadedPosts[10] = { 0 };
-ClientState gState;
+ClientState    gState;
+unsigned char *msg_buf;
+size_t	       msg_size;
+char	      *fb;
+unsigned int   post_limit;
 
-#ifdef STATIC_BUFFER
-unsigned char msg_buf[655360];
-size_t msg_size;
-#endif
 
 #ifdef __SWITCH__
 HidsysUniquePadId unique_pad_ids[2]={0};
@@ -51,7 +53,6 @@ SwkbdConfig gSwkbd;
 volatile sig_atomic_t gNewDataAvailable = 0;
 volatile sig_atomic_t gResized = 0;
 
-unsigned int post_limit;
 extern unsigned int max_posts_per_page;
 extern struct winsize window;
 
@@ -83,6 +84,7 @@ void parseCmdLine( int argc, char *argv[], char **server_addr, int *server_port 
 	{
 esci:
 		printf( "Sintassi: %s [indirizzo] [porta]\n", argv[0] );
+		_fflush( stdout );
 		_exit( 1 );
 	}
 
@@ -125,20 +127,25 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 
 	/* Invio il pacchetto e ricevo il primo byte della risposta, che ne identifica il tipo */
 
-	while ( send( sockfd, msg_buf, *len, 0 ) < 0 )
+	if ( sockSendAll( sockfd, msg_buf, *len ) < 0 )
 	{
-		if ( errno != EINTR )
-			// Broken pipe, Connection reset, Timed out...
-			return -1;
+		// Broken pipe, Connection reset, Timed out...
+		return -1;
 	}
 
 	ssize_t rc;
 
-	while ( ( rc = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
-	{	
-		if ( rc == -1 && errno == EINTR )
-			continue;
-		return -1;
+	while (1)
+	{
+		while ( ( rc = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
+		{	
+			if ( rc == -1 && errno == EINTR )
+				continue;
+			return -1;
+		}
+
+		if ( *msg_buf != '!' )		// questo byte non è una notifica OOB finita tra i dati protocollari, proseguiamo
+			break;
 	}
 	*len += rc;
 
@@ -202,6 +209,9 @@ void exitProgram( int exit_code )
 			free( gState.cached_posts[i] );
 			gState.cached_posts[i] = NULL;
 		}
+	
+	if ( msg_buf ) free( msg_buf );
+	msg_buf = NULL;
 
 	if ( gState.cached_posts ) free( gState.cached_posts );
 	gState.cached_posts = NULL;
@@ -210,6 +220,9 @@ void exitProgram( int exit_code )
 
 	setTerminalMode( TERM_CANON );
 	printf( CURSHOW );	// show cursor
+	_fflush( stdout );
+	setvbuf( stdout, NULL, _IONBF, 0 );
+	free( fb );
 	_exit( exit_code );
 }
 
@@ -340,10 +353,8 @@ int main( int argc, char *argv[] )
 	int  		    auth_level = -1;		/* 1 amministratore, 0: utente standard, -1: anonimo */
 	struct sockaddr_in  servaddr;
 	struct hostent     *he;
-#ifndef STATIC_BUFFER
-	unsigned char 	    msg_buf[655360];
+	unsigned char 	   *msg_buf;
 	size_t 		    msg_size;
-#endif
 #ifndef __SWITCH__
 	struct sigaction    sa = { 0 };
 	sigset_t	    sigset;
@@ -409,7 +420,10 @@ int main( int argc, char *argv[] )
 	swkbdConfigSetStringLenMin( &gSwkbd, 1 );
 	swkbdConfigSetInitialText( &gSwkbd, address_buf );
 	if ( getValidInput( address_buf, 4097, "Inserisci l'indirizzo del server" ) == -1 )
+	{
+		_fflush( stdout );
 		_exit( EXIT_FAILURE );
+	}
 
 	swkbdConfigMakePresetDefault( &gSwkbd );
 	swkbdConfigSetReturnButtonFlag( &gSwkbd, 0 );
@@ -417,7 +431,10 @@ int main( int argc, char *argv[] )
 	swkbdConfigSetType( &gSwkbd, SwkbdType_NumPad );
 	swkbdConfigSetOkButtonText( &gSwkbd, "Connetti" );
 	if ( getValidInput( port_buf, 5, "Inserisci la porta" ) == -1 )
+	{
+		_fflush( stdout );
 		_exit( EXIT_FAILURE );
+	}
 #endif
 
 	char *endptr;
@@ -436,19 +453,32 @@ int main( int argc, char *argv[] )
 	if ( s_port < 0 || s_port > 65535 )
 	{
 		fprintf( stderr, "client: Numero di porta non valido.\n" );
+		_fflush( stdout );
 		_exit( EXIT_FAILURE );
+	}
+
+	if ( ( msg_buf = malloc( BUF_SIZE * BUF_NPOSTS ) ) == NULL )
+	{
+		fprintf( stderr, "client: Impossibile allocare %d byte per lo scambio dei messaggi\n", BUF_SIZE * BUF_NPOSTS );
+		exit( EXIT_FAILURE );
 	}
 
 
 	/* Impostazione buffer I/O e grafica */
 
-	char *fb;
 	if ( updateWinSize( &gState ) )
+	{
+		free( msg_buf );
 		err( EXIT_FAILURE, "client: Impossibile ottenere le dimensioni della finestra" );
+	}
 	post_limit = max_posts_per_page;
+	if ( post_limit > BUF_NPOSTS ) post_limit = BUF_NPOSTS;
 	fb = malloc( window.ws_row * window.ws_col );
 	if ( fb == NULL )
+	{
+		free( msg_buf );
 		err( EXIT_FAILURE, "client: Impossibile allocare memoria per il framebuffer" );
+	}
 
 	_fflush( stdout );
 	if ( setvbuf( stdin, NULL, _IONBF, 0 ) )
@@ -482,6 +512,10 @@ int main( int argc, char *argv[] )
 		if ( ( he = gethostbyname( s_addr ) ) == NULL )
 		{
 			printf( "fallita.\n" );
+			_fflush( stdout );
+			free( msg_buf );
+			setvbuf( stdout, NULL, _IONBF, 0 );
+			free( fb );
 			_exit( EXIT_FAILURE );
 		}
 
@@ -494,7 +528,10 @@ int main( int argc, char *argv[] )
 	/* Connessione al server della bacheca */
 
 	if ( ( s_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
+	{
+		free( msg_buf );
 		err( EXIT_FAILURE, "client: Errore nella creazione della socket" );
+	}
 
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port   = htons( (unsigned short int)s_port );
@@ -503,7 +540,10 @@ int main( int argc, char *argv[] )
 	_fflush( stdout );
 
 	if ( connect( s_sock, (struct sockaddr *)&servaddr, sizeof( servaddr ) ) < 0 )
+	{
+		free( msg_buf );
 		err( EXIT_FAILURE, "client: impossibile connettersi al server" );
+	}
 
 
 	/* Impostazioni socket */
@@ -555,7 +595,12 @@ int main( int argc, char *argv[] )
 		exitProgram( EXIT_FAILURE );
 	}
 
-	if ( *msg_buf == SERV_AUTHENTICATE )
+	if ( *msg_buf == SERV_BYE )
+	{
+		printf( "Il server è pieno o è momentaneamente non disponibile.\n" );
+		exitProgram( EXIT_SUCCESS );
+	}
+	else if ( *msg_buf == SERV_AUTHENTICATE )
 	{
 		setTerminalMode( TERM_CANON );
 		printf( "%s richiede l'autenticazione per poter accedere alla bacheca.\n\n", s_addr );
@@ -723,6 +768,7 @@ oob:
 		{
 resize:
 			gState.post_offset = 0;		// per non incasinare il testo del post
+			gState.ogg_offset = 0;
 			updateWinSize( &gState );
 			drawTui( &gState );
 
@@ -921,6 +967,7 @@ resize:
 					gState.current_screen = STATE_SINGLEPOST;
 					gState.state_label[0] = '\0';
 					gState.post_offset = 0;
+					gState.ogg_offset = 0;
 					drawTui( &gState );
 				}
 				else if ( gState.current_screen == STATE_ERROR )
@@ -1000,6 +1047,12 @@ resize:
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
 				}
+				else if ( gState.current_screen == STATE_SINGLEPOST && gState.ogg_offset )
+				{
+					gState.ogg_offset--;
+					drawTui( &gState );
+					break;
+				}
 				break;
 
 			case 'l':
@@ -1012,6 +1065,14 @@ resize:
 				else if ( gState.current_screen & UI_PAGENAV && gState.num_posts != 0 &&
 					  gState.loaded_page < ( gState.num_posts - 1 ) / post_limit + 1 )
 				{
+					if ( gState.loaded_page == 255 )
+					{
+						sprintf( gState.state_label, "Impossibile caricare ulteriori pagine (limite di protocollo)" );
+						drawTui( &gState );
+						gState.state_label[0] = '\0';
+						break;
+					}
+
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
 
@@ -1033,6 +1094,12 @@ resize:
 					gState.page_offset = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
+				}
+				else if ( gState.current_screen == STATE_SINGLEPOST && gState.more_oggetto )
+				{
+					gState.ogg_offset++;
+					drawTui( &gState );
+					break;
 				}
 				break;
 
@@ -1182,7 +1249,7 @@ resize:
 					ret = SendAndGetResponse( s_sock, msg_buf, &msg_size, SERV_OK );
 					//free( newpost );
 
-					if ( ret )
+					if ( ret > 0 )
 					{
 						sprintf( gState.state_label, "Post pubblicato!" );
 						drawTui( &gState );

@@ -44,6 +44,7 @@
  #define BTNQUIT	" + "
  #define LISTNAVLBL	" Naviga"
  #define TEXTNAVLBL	" Scorri"
+ #define OGGNAVLBL	" Scorri ogg."
  #define PAGENAVLBL	" Pag+/-"
  #define READPOSTLBL	" Leggi"
  #define WRITEPOSTLBL	" Scrivi"
@@ -73,6 +74,7 @@
  #define BTNQUIT	" Q "
  #define LISTNAVLBL	"  Naviga lista"
  #define TEXTNAVLBL	"  Scorri testo"
+ #define OGGNAVLBL	"  Scorri ogg."
  #define PAGENAVLBL	"  Cambia pagina"
  #define READPOSTLBL	"  Leggi post"
  #define WRITEPOSTLBL	"  Scrivi post"
@@ -113,7 +115,9 @@ typedef struct client_state {
 	Post		   *opened_post;
 	unsigned int	   post_lines;
 	unsigned int	   post_offset;
+	unsigned int	   ogg_offset;
 	int		   more_lines;
+	int		   more_oggetto;
 	enum draft_state   current_draft_field;
 	char               buf_oggetto[257];
 	char		   buf_testo[60001];

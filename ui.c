@@ -108,8 +108,6 @@ char *stringifyTimestamp( time_t timestamp )
 	struct tm *tmp;
 	time_t now = time( NULL );
 
-	/* needs to be replaced with actual logic */
-	//sprintf( result, "01/01" );
 	tmp = localtime( &now );
 	//memcpy( &now_tm, tmp, sizeof( struct tm ) );		// copy current time in now_tm
 	now_tm = *tmp;
@@ -129,7 +127,7 @@ char *stringifyTimestamp( time_t timestamp )
 #define ANSIRST "\033[0m"
 #define ANSIDIS "\033[30m\033[100m"
 #define ANSINEW "\033[1m\033[3m\033[97m\033[5m"
-unsigned int printWrapped( char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1, unsigned int skip )
+unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1, unsigned int skip )
 {
 	unsigned short x_len = x1 - x0 + 1;
 	unsigned short y_len = y1 - y0 + 1;
@@ -138,32 +136,25 @@ unsigned int printWrapped( char* str, size_t size, unsigned short x0, unsigned s
 	//unsigned short y = y0;
 	unsigned int   l = 0;
 
-	char* curr = str;
-	char* lines[4096];
+	const char* curr = str;
+	const char* lines[4096];
 
 	if ( x_len <= 0 || y_len <= 0 )
 		return ( unsigned int )-1;
 
 	lines[ l++ ] = curr;
 
-	//printf( "\033[%d;%dH", y, x );
-
-	char* curline = curr;
-	char* curword = curr;
+	const char* curline = curr;
+	const char* curword = curr;
 
 	while ( *curr )
-	//while ( curr - str < size && *curr )
 	{
 	      continue_outer:
-		//int has_blank = false;
-		
 		// non dovremmo arrivare a questo punto,
 		// ma se dovessimo evitiamo di corrompere la stack
-		if ( l > 4096 )
+		if ( l >= 4096 )
 			break;
 
-	      //nextword:
-		//while ( curr - str < size && !isspace( *curr ) )
 		while ( !isspace( *curr ) )
 		{
 			if ( *curr == '\0' || curr - str == ( ptrdiff_t )size )
@@ -214,7 +205,6 @@ unsigned int printWrapped( char* str, size_t size, unsigned short x0, unsigned s
 			continue;
 		}
 
-		//has_blank = true;
 		curword = ++curr;
 		if ( curr - curline >= x_len )
 		{
@@ -223,8 +213,6 @@ unsigned int printWrapped( char* str, size_t size, unsigned short x0, unsigned s
 			//curword = curr;
 			continue;
 		}
-
-		//goto nextword;
 	}
 	
 	lines[ l ] = str + strnlen( str, size );
@@ -253,27 +241,15 @@ endloop:
 	for ( unsigned int i = 0; i < y_len && start_index + i < l; i++ )
 	{
 		int line_len = lines[ start_index + i + 1 ] - lines[ start_index + i ];
-#ifdef __SWITCH__
 		if ( line_len && lines[ start_index + i ][ line_len - 1 ] == '\v' )
-			lines[ start_index + i ][ line_len - 1 ] = '\n';
-#endif
+			line_len--;
 		printf( "\033[%d;%dH%.*s", y0 + i,
 				           x0,
 					   line_len, lines[ start_index + i ] );
 					   //lines[ start_index + i ][ line_len - 1 ] == '\n' ? "" : "\n" );
-#ifdef __SWITCH__
-		// Rimediamo al casino che abbiamo fatto prima
-		//if ( line_len && lines[ start_index + i ][ line_len - 1 ] == '\n' )
-		//	lines[ start_index + i ][ line_len - 1 ] = '\v';
-#endif
 	}
-	//printf( "\033[%d;%dH%s", l > y_len ? y1 : y0 + l - 1, x0, lines[ l - 1 ] );
 
 	//printf( "\033[%d;%dH%d lines", y1 + 1, x0 + 2, l );
-
-
-	//fflush( stdout );
-	
 
 	return l;
 }
@@ -397,9 +373,6 @@ int draw_header( ClientState *state )
 		left_text[ x_max ] = '\0';
 	}
 
-	//printf( "\033[2;4H%s\033[2;%dH%s", left_text, window.ws_col - padding_hdr - right_text_len, right_text );
-	//printf( "\033[2;4H%s", left_text );
-
 	if ( state->current_layout == LAYOUT_MOBILE )
 	{
 		// Dipingi barra bianca + lascia pennello bianco
@@ -482,11 +455,22 @@ int draw_footer( ClientState *state )
 							                             ANSIREV BTNDX ANSIRST : ANSIDIS BTNDX ANSIRST,
 							    ROW2, COL2 );
 
+	if ( state->current_screen == STATE_SINGLEPOST && ( state->more_oggetto || state->ogg_offset ) )
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;%dH⏪ %s%s ⏩", ROW1, MAX( window.ws_col / 2 - 3, 21 ),
+							     state->ogg_offset   ? ANSIREV BTNSX ANSIRST : ANSIDIS BTNSX ANSIRST, 
+				                             state->more_oggetto ? ANSIREV BTNDX ANSIRST : ANSIDIS BTNDX ANSIRST );
+		else
+		printf( "\033[%d;%dH%s  %s" OGGNAVLBL "\033[%d;%dH", ROW1, COL2,
+							     state->ogg_offset   ? ANSIREV BTNSX ANSIRST : ANSIDIS BTNSX ANSIRST, 
+				                             state->more_oggetto ? ANSIREV BTNDX ANSIRST : ANSIDIS BTNDX ANSIRST,
+							     ROW1, COL2 );
+
 	if ( state->current_screen & UI_READPOST && state->selected_post < state->loaded_posts )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " ↵ " ANSIRST " 📖", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
 		else
-		printf( "\033[%d;%dH" ANSIREV BTNENT ANSIRST READPOSTLBL "\033[%d;%dH", ROW1, COL2, ROW2, COL2 );
+			printf( "\033[%d;%dH" ANSIREV BTNENT ANSIRST READPOSTLBL "\033[%d;%dH", ROW1, COL2, ROW2, COL2 );
 
 	if ( state->current_screen & UI_WRITEPOST )
 		if ( state->current_layout == LAYOUT_MOBILE )
@@ -498,12 +482,13 @@ int draw_footer( ClientState *state )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;4H" ANSIREV BTNSUBMIT ANSIRST " 📤\033[%d;4H", ROW1, ROW2 );
 		else	
-		printf( "\033[%d;%dH" ANSIREV BTNSUBMIT ANSIRST SENDPOSTLBL "\033[%d;%dH", ROW1, COL1B, ROW2, COL1B );
+			printf( "\033[%d;%dH" ANSIREV BTNSUBMIT ANSIRST SENDPOSTLBL "\033[%d;%dH", ROW1, COL1B, ROW2, COL1B );
 
 	if ( state->current_screen & UI_BACK )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " %sB " ANSIRST " 🔙",
-					state->current_screen == STATE_WRITING ? ROW2 : ROW1,
+					//state->current_screen == STATE_WRITING ? ROW2 : ROW1,
+					ROW2,
 					state->current_screen == STATE_SINGLEPOST ? MAX( window.ws_col / 2 - 3, 21 ) : 4,
 					state->current_screen == STATE_WRITING ? "^" : "" );
 		else			   
@@ -516,7 +501,7 @@ int draw_footer( ClientState *state )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " ⇥ " ANSIRST " 🔃", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
 		else
-		printf( "\033[%d;%dH" ANSIREV BTNSWITCH ANSIRST SWITCHLBL, ROW1, COL2 );
+			printf( "\033[%d;%dH" ANSIREV BTNSWITCH ANSIRST SWITCHLBL, ROW1, COL2 );
 	
 	if ( state->current_screen == STATE_LISTING )
 		if ( state->current_layout != LAYOUT_MOBILE )
@@ -538,19 +523,18 @@ int draw_footer( ClientState *state )
 					ROW2,
 					state->current_screen == STATE_LISTING ? MAX( window.ws_col - 9, 33 ) : 4 );
 		else
-		printf( ANSIREV BTNDEL ANSIRST DELPOSTLBL "\033[%d;%dH", ROW1, COL4 );
+			printf( ANSIREV BTNDEL ANSIRST DELPOSTLBL "\033[%d;%dH", ROW1, COL4 );
 		
 	if ( state->current_screen != STATE_WRITING )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV BTNQUIT ANSIRST " 🚪", ROW1, MAX( window.ws_col - 9, 33 ) );
 		else
-		printf( "\033[%d;%dH" ANSIREV BTNQUIT ANSIRST QUITLBL, ROW1, COL3 );
+			printf( "\033[%d;%dH" ANSIREV BTNQUIT ANSIRST QUITLBL, ROW1, COL3 );
 
 	if ( state->current_layout == LAYOUT_STANDARD )
 		printf( "\033[%d;2H\033[0K\033[%d;%dH" VL, ROWSTATE, ROWSTATE, window.ws_col );
 	else
 		printf( "\033[%d;1H\033[0K", ROWSTATE );
-	//draw_box();
 	
 	if ( state->state_label[0] != '\0' )
 		if ( state->current_layout == LAYOUT_MOBILE )
@@ -569,8 +553,6 @@ int drawTui_listView( ClientState *state )
 	//state->listnav_enabled = true;
 	//state->readpost_enabled = state->quit_enabled = true;
 	//state->goback_enabled = false;
-	//strcpy( state->state_label, "Prova" );
-	//*state->state_label = '\0';
 	draw_header( state );
 	draw_footer( state );
 
@@ -588,21 +570,21 @@ int drawTui_listView( ClientState *state )
 	{
 		Post *post = state->cached_posts[ i ];
 		char *ora_post;
-		//char *mittente = malloc( post->len_mittente + 1 );
-		//char *oggetto = malloc( post->len_oggetto + 1 );
 		int64_t timestamp;
 		int selected = state->selected_post == i;
 		int is_new = post->timestamp > state->most_recent_post_shown && strncmp( post->data, state->user, post->len_mittente );
 
 		memcpy( &timestamp, &post->timestamp, 8 );
-		//strncpy( mittente, post->data, post->len_mittente );
-		//strncpy( oggetto, post->data + post->len_mittente, post->len_oggetto );
 		ora_post = stringifyTimestamp( (time_t)timestamp );
 
-		int oggetto_trunc_pos = state->current_layout == LAYOUT_MOBILE ? window.ws_col - 6 - 1 - post->len_mittente :
-										 window.ws_col - 6 - 5 - 4 - post->len_mittente;
-		if ( oggetto_trunc_pos < 0 ) oggetto_trunc_pos = 0;
+		int mittente_trunc_pos = state->current_layout == LAYOUT_MOBILE ? window.ws_col - 6 :
+										  window.ws_col - 6 - 5 - 3;
+		int oggetto_trunc_pos  = state->current_layout == LAYOUT_MOBILE ? window.ws_col - 6 - 1 - post->len_mittente :
+										  window.ws_col - 6 - 5 - 4 - post->len_mittente;
+		if ( mittente_trunc_pos < 0 ) mittente_trunc_pos = 0;
+		if ( oggetto_trunc_pos  < 0 ) oggetto_trunc_pos  = 0;
 		//if ( strlen( oggetto ) > oggetto_trunc_pos ) oggetto[ oggetto_trunc_pos ] = '\0';	// tronca oggetto se più lungo di schermo
+		if ( post->len_mittente < mittente_trunc_pos ) mittente_trunc_pos = post->len_mittente;
 		if ( post->len_oggetto &&
 		     post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
 
@@ -612,13 +594,11 @@ int drawTui_listView( ClientState *state )
 		printf( "\033[%d;%dH", 1 + y_off + i - state->page_offset, x_off );
 		printf( "%s%s%s %.*s %.*s%s", selected ? SEL : UNSEL,
 					      is_new ? ANSINEW : "", ora_post,
-								     post->len_mittente, post->data,
+								     mittente_trunc_pos, post->data,
 								     oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
-								 					     ANSIITA "(nessun oggetto)" ANSIRST,
+								 					     ANSIITA "(nessun oggetto)",
 		     			      ANSIRST );
 
-		//free( mittente );
-		//free( oggetto );
 		free( ora_post );
 	}
 
@@ -645,11 +625,36 @@ int drawTui_readPost( ClientState *state )
 	memcpy( &time_buf, &curr_post->timestamp, 8 );
 	strftime( data_buf, 20, "%d/%m/%Y %H:%M:%S", localtime( ( time_t *)&time_buf ) );
 
-	//int l = 0;
 	//unsigned short padding_x = window.ws_col / 10;
 	unsigned short padding_x = state->current_layout == LAYOUT_MOBILE ? 0 : window.ws_col / 10;
 	unsigned short padding_y = 1;
 
+	char oggetto_buf[257];
+	size_t oggetto_len     = curr_post->len_oggetto - state->ogg_offset;
+	size_t oggetto_maxlen  = window.ws_col - 2 * padding_x - strlen( ogg_label );
+	size_t mittente_maxlen = window.ws_col - 2 * padding_x - strlen( aut_label );
+	
+	if ( curr_post->len_oggetto )
+	{
+		memcpy( oggetto_buf, curr_post->data + curr_post->len_mittente + state->ogg_offset, oggetto_len );
+		oggetto_buf[ oggetto_len ] = '\0';
+		if ( state->ogg_offset )
+			for ( size_t i = 0; i < 3 && i < oggetto_len; i++ )
+				oggetto_buf[ i ] = '.';
+		if ( oggetto_len > oggetto_maxlen )
+		{
+			state->more_oggetto = 1;
+			for ( size_t i = oggetto_maxlen - 1; i >= oggetto_maxlen - 3 && i >= 0; i-- )
+				oggetto_buf[ i ] = '.';
+			oggetto_buf[ oggetto_maxlen ] = '\0';
+		}
+		else
+			state->more_oggetto = 0;
+	}
+	else
+		strcpy( oggetto_buf, ANSIITA "(nessun oggetto)" ANSIRST );
+
+	size_t mittente_len = curr_post->len_mittente > mittente_maxlen ? mittente_maxlen : curr_post->len_mittente;
 	//printf( "\033[5;%1$dH"
 	//	"Autore: %3$.*2$s"
 	//	"\033[6;%1$dH"
@@ -658,10 +663,8 @@ int drawTui_readPost( ClientState *state )
 	//								     curr_post->len_oggetto ? curr_post->len_oggetto : -1,
 	//								     curr_post->len_oggetto ? curr_post->data + curr_post->len_mittente :
 	//								     			      ANSIITA "(nessun oggetto)" ANSIRST );
-	printf( "\033[%d;%dH" "%s%.*s", 1 + hdr_size + padding_y, 1 + padding_x, aut_label, curr_post->len_mittente, curr_post->data );
-	printf( "\033[%d;%dH" "%s%.*s", 2 + hdr_size + padding_y, 1 + padding_x, ogg_label, curr_post->len_oggetto ? curr_post->len_oggetto : -1,
-						curr_post->len_oggetto ? curr_post->data + curr_post->len_mittente :
-					       								 ANSIITA "(nessun oggetto)" ANSIRST );
+	printf( "\033[%d;%dH" "%s%.*s", 1 + hdr_size + padding_y, 1 + padding_x, aut_label, mittente_len, curr_post->data );
+	printf( "\033[%d;%dH" "%s%s",   2 + hdr_size + padding_y, 1 + padding_x, ogg_label, oggetto_buf );
 	printf( "\033[%d;%dH" "%s%s",   3 + hdr_size + padding_y, 1 + padding_x, dat_label, data_buf );
 
 	state->post_lines = printWrapped( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto,
