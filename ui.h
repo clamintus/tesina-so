@@ -51,7 +51,9 @@ typedef struct client_state {
 	Post		   *opened_post;
 	unsigned int	   post_lines;
 	unsigned int	   post_offset;
+	unsigned int	   ogg_offset;
 	int		   more_lines;
+	int		   more_oggetto;
 	enum draft_state   current_draft_field;
 	char               buf_oggetto[257];
 	char		   buf_testo[60001];

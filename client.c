@@ -604,6 +604,7 @@ oob:
 		{
 resize:
 			gState.post_offset = 0;		// per non incasinare il testo del post
+			gState.ogg_offset = 0;
 			updateWinSize( &gState );
 			drawTui( &gState );
 
@@ -690,6 +691,7 @@ resize:
 					gState.current_screen = STATE_SINGLEPOST;
 					gState.state_label[0] = '\0';
 					gState.post_offset = 0;
+					gState.ogg_offset = 0;
 					drawTui( &gState );
 				}
 				else if ( gState.current_screen == STATE_ERROR )
@@ -769,6 +771,12 @@ resize:
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
 				}
+				else if ( gState.current_screen == STATE_SINGLEPOST && gState.ogg_offset )
+				{
+					gState.ogg_offset--;
+					drawTui( &gState );
+					break;
+				}
 				break;
 
 			case 'l':
@@ -810,6 +818,12 @@ resize:
 					gState.page_offset = 0;
 					gState.state_label[0] = '\0';
 					drawTui( &gState );
+				}
+				else if ( gState.current_screen == STATE_SINGLEPOST && gState.more_oggetto )
+				{
+					gState.ogg_offset++;
+					drawTui( &gState );
+					break;
 				}
 				break;
 

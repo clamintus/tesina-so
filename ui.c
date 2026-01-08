@@ -423,6 +423,17 @@ int draw_footer( ClientState *state )
 							                             ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST,
 							    ROW2 );
 
+	if ( state->current_screen == STATE_SINGLEPOST && ( state->more_oggetto || state->ogg_offset ) )
+		if ( state->current_layout == LAYOUT_MOBILE )
+			printf( "\033[%d;%dH⏪ %s%s ⏩", ROW1, MAX( window.ws_col / 2 - 3, 21 ),
+							     state->ogg_offset   ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
+				                             state->more_oggetto ? ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST );
+		else
+		printf( "\033[%d;36H%s  %s  Scorri ogg.\033[%d;36H", ROW1,
+							     state->ogg_offset   ? ANSIREV " H " ANSIRST : ANSIDIS " H " ANSIRST, 
+				                             state->more_oggetto ? ANSIREV " L " ANSIRST : ANSIDIS " L " ANSIRST,
+							     ROW1 );
+
 	if ( state->current_screen & UI_READPOST && state->selected_post < state->loaded_posts )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " ↵ " ANSIRST " 📖", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
@@ -444,7 +455,8 @@ int draw_footer( ClientState *state )
 	if ( state->current_screen & UI_BACK )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " %sB " ANSIRST " 🔙",
-					state->current_screen == STATE_WRITING ? ROW2 : ROW1,
+					//state->current_screen == STATE_WRITING ? ROW2 : ROW1,
+					ROW2,
 					state->current_screen == STATE_SINGLEPOST ? MAX( window.ws_col / 2 - 3, 21 ) : 4,
 					state->current_screen == STATE_WRITING ? "^" : "" );
 		else			   
@@ -539,10 +551,14 @@ int drawTui_listView( ClientState *state )
 		//strncpy( oggetto, post->data + post->len_mittente, post->len_oggetto );
 		ora_post = stringifyTimestamp( (time_t)timestamp );
 
-		int oggetto_trunc_pos = state->current_layout == LAYOUT_MOBILE ? window.ws_col - 6 - 1 - post->len_mittente :
-										 window.ws_col - 6 - 5 - 4 - post->len_mittente;
-		if ( oggetto_trunc_pos < 0 ) oggetto_trunc_pos = 0;
+		int mittente_trunc_pos = state->current_layout == LAYOUT_MOBILE ? window.ws_col - 6 :
+										  window.ws_col - 6 - 5 - 3;
+		int oggetto_trunc_pos  = state->current_layout == LAYOUT_MOBILE ? window.ws_col - 6 - 1 - post->len_mittente :
+										  window.ws_col - 6 - 5 - 4 - post->len_mittente;
+		if ( mittente_trunc_pos < 0 ) mittente_trunc_pos = 0;
+		if ( oggetto_trunc_pos  < 0 ) oggetto_trunc_pos  = 0;
 		//if ( strlen( oggetto ) > oggetto_trunc_pos ) oggetto[ oggetto_trunc_pos ] = '\0';	// tronca oggetto se più lungo di schermo
+		if ( post->len_mittente < mittente_trunc_pos ) mittente_trunc_pos = post->len_mittente;
 		if ( post->len_oggetto &&
 		     post->len_oggetto < oggetto_trunc_pos ) oggetto_trunc_pos = post->len_oggetto;
 
@@ -552,7 +568,7 @@ int drawTui_listView( ClientState *state )
 		printf( "\033[%d;%dH", 1 + y_off + i - state->page_offset, x_off );
 		printf( "%s%s%s %.*s %.*s%s", selected ? SEL : UNSEL,
 					      is_new ? ANSINEW : "", ora_post,
-								     post->len_mittente, post->data,
+								     mittente_trunc_pos, post->data,
 								     oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
 								 					     ANSIITA "(nessun oggetto)" ANSIRST,
 		     			      ANSIRST );
@@ -590,6 +606,39 @@ int drawTui_readPost( ClientState *state )
 	unsigned short padding_x = state->current_layout == LAYOUT_MOBILE ? 0 : window.ws_col / 10;
 	unsigned short padding_y = 1;
 
+	// maxlen = ws_col - 2 * pad_x
+	// strncpy( oggetto + skip : maxlen ) -> ogg_buf
+	// se ogg_buf non stringa completa -> more = 1, ogg_buf[-3:] = "..."
+	// se skip > 0: ogg_buf[:3] = "..."
+	//
+	// client: l -> se more: skip++
+	// 	   h -> se skip: skip--
+	char oggetto_buf[257];
+	size_t oggetto_len     = curr_post->len_oggetto - state->ogg_offset;
+	size_t oggetto_maxlen  = window.ws_col - 2 * padding_x - strlen( ogg_label );
+	size_t mittente_maxlen = window.ws_col - 2 * padding_x - strlen( aut_label );
+	
+	if ( curr_post->len_oggetto )
+	{
+		memcpy( oggetto_buf, curr_post->data + curr_post->len_mittente + state->ogg_offset, oggetto_len );
+		oggetto_buf[ oggetto_len ] = '\0';
+		if ( state->ogg_offset )
+			for ( size_t i = 0; i < 3 && i < oggetto_len; i++ )
+				oggetto_buf[ i ] = '.';
+		if ( oggetto_len > oggetto_maxlen )
+		{
+			state->more_oggetto = 1;
+			for ( size_t i = oggetto_maxlen - 1; i >= oggetto_maxlen - 3 && i >= 0; i-- )
+				oggetto_buf[ i ] = '.';
+			oggetto_buf[ oggetto_maxlen ] = '\0';
+		}
+		else
+			state->more_oggetto = 0;
+	}
+	else
+		strcpy( oggetto_buf, ANSIITA "(nessun oggetto)" ANSIRST );
+
+	size_t mittente_len = curr_post->len_mittente > mittente_maxlen ? mittente_maxlen : curr_post->len_mittente;
 	//printf( "\033[5;%1$dH"
 	//	"Autore: %3$.*2$s"
 	//	"\033[6;%1$dH"
@@ -598,10 +647,8 @@ int drawTui_readPost( ClientState *state )
 	//								     curr_post->len_oggetto ? curr_post->len_oggetto : -1,
 	//								     curr_post->len_oggetto ? curr_post->data + curr_post->len_mittente :
 	//								     			      ANSIITA "(nessun oggetto)" ANSIRST );
-	printf( "\033[%d;%dH" "%s%.*s", 1 + hdr_size + padding_y, 1 + padding_x, aut_label, curr_post->len_mittente, curr_post->data );
-	printf( "\033[%d;%dH" "%s%.*s", 2 + hdr_size + padding_y, 1 + padding_x, ogg_label, curr_post->len_oggetto ? curr_post->len_oggetto : -1,
-						curr_post->len_oggetto ? curr_post->data + curr_post->len_mittente :
-					       								 ANSIITA "(nessun oggetto)" ANSIRST );
+	printf( "\033[%d;%dH" "%s%.*s", 1 + hdr_size + padding_y, 1 + padding_x, aut_label, mittente_len, curr_post->data );
+	printf( "\033[%d;%dH" "%s%s",   2 + hdr_size + padding_y, 1 + padding_x, ogg_label, oggetto_buf );
 	printf( "\033[%d;%dH" "%s%s",   3 + hdr_size + padding_y, 1 + padding_x, dat_label, data_buf );
 
 	state->post_lines = printWrapped( curr_post->data + curr_post->len_mittente + curr_post->len_oggetto,
