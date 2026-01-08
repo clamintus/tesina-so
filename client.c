@@ -834,7 +834,8 @@ resize:
 		// ora possiamo gestire l'input della Switch
 
 		padUpdate( &gPad );
-		padRepeaterUpdate( &gPadRepeater, padGetButtons( &gPad ) & ( HidNpadButton_AnyUp | HidNpadButton_AnyDown ) );
+		padRepeaterUpdate( &gPadRepeater, padGetButtons( &gPad ) & ( HidNpadButton_AnyUp | HidNpadButton_AnyDown |
+									     HidNpadButton_L | HidNpadButton_R             ) );
 
 		u64 actions = padRepeaterGetButtons( &gPadRepeater ) | padGetButtonsDown( &gPad );
 		if ( gState.current_screen != STATE_WRITING && actions & HidNpadButton_AnyUp )
