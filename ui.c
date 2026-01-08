@@ -79,8 +79,6 @@ char *stringifyTimestamp( time_t timestamp )
 	struct tm *tmp;
 	time_t now = time( NULL );
 
-	/* needs to be replaced with actual logic */
-	//sprintf( result, "01/01" );
 	tmp = localtime( &now );
 	//memcpy( &now_tm, tmp, sizeof( struct tm ) );		// copy current time in now_tm
 	now_tm = *tmp;
@@ -117,24 +115,17 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 
 	lines[ l++ ] = curr;
 
-	//printf( "\033[%d;%dH", y, x );
-
 	const char* curline = curr;
 	const char* curword = curr;
 
 	while ( *curr )
-	//while ( curr - str < size && *curr )
 	{
 	      continue_outer:
-		//int has_blank = false;
-		
 		// non dovremmo arrivare a questo punto,
 		// ma se dovessimo evitiamo di corrompere la stack
 		if ( l >= 4096 )
 			break;
 
-	      //nextword:
-		//while ( curr - str < size && !isspace( *curr ) )
 		while ( !isspace( *curr ) )
 		{
 			if ( *curr == '\0' || curr - str == ( ptrdiff_t )size )
@@ -185,7 +176,6 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 			continue;
 		}
 
-		//has_blank = true;
 		curword = ++curr;
 		if ( curr - curline >= x_len )
 		{
@@ -194,8 +184,6 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 			//curword = curr;
 			continue;
 		}
-
-		//goto nextword;
 	}
 	
 	lines[ l ] = str + strnlen( str, size );
@@ -217,17 +205,15 @@ endloop:
 	for ( unsigned int i = 0; i < y_len && start_index + i < l; i++ )
 	{
 		int line_len = lines[ start_index + i + 1 ] - lines[ start_index + i ];
+		if ( line_len && lines[ start_index + i ][ line_len - 1 ] == '\v' )
+			line_len--;
 		printf( "\033[%d;%dH%.*s", y0 + i,
 				           x0,
 					   line_len, lines[ start_index + i ] );
 					   //lines[ start_index + i ][ line_len - 1 ] == '\n' ? "" : "\n" );
 	}
-	//printf( "\033[%d;%dH%s", l > y_len ? y1 : y0 + l - 1, x0, lines[ l - 1 ] );
 
 	//printf( "\033[%d;%dH%d lines", y1 + 1, x0 + 2, l );
-
-
-	//fflush( stdout );
 
 	return l;
 }
@@ -351,9 +337,6 @@ int draw_header( ClientState *state )
 		left_text[ x_max ] = '\0';
 	}
 
-	//printf( "\033[2;4H%s\033[2;%dH%s", left_text, window.ws_col - padding_hdr - right_text_len, right_text );
-	//printf( "\033[2;4H%s", left_text );
-
 	if ( state->current_layout == LAYOUT_MOBILE )
 	{
 		// Dipingi barra bianca + lascia pennello bianco
@@ -438,7 +421,7 @@ int draw_footer( ClientState *state )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " ↵ " ANSIRST " 📖", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
 		else
-		printf( "\033[%d;36H" ANSIREV " ENTER " ANSIRST "  Leggi post\033[%d;36H", ROW1, ROW2 );
+			printf( "\033[%d;36H" ANSIREV " ENTER " ANSIRST "  Leggi post\033[%d;36H", ROW1, ROW2 );
 
 	if ( state->current_screen & UI_WRITEPOST )
 		if ( state->current_layout == LAYOUT_MOBILE )
@@ -450,7 +433,7 @@ int draw_footer( ClientState *state )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;4H" ANSIREV " ^X " ANSIRST " 📤\033[%d;4H", ROW1, ROW2 );
 		else	
-		printf( "\033[%d;9H" ANSIREV " ^X " ANSIRST "  Pubblica\033[%d;9H", ROW1, ROW2 );
+			printf( "\033[%d;9H" ANSIREV " ^X " ANSIRST "  Pubblica\033[%d;9H", ROW1, ROW2 );
 
 	if ( state->current_screen & UI_BACK )
 		if ( state->current_layout == LAYOUT_MOBILE )
@@ -469,7 +452,7 @@ int draw_footer( ClientState *state )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " ⇥ " ANSIRST " 🔃", ROW1, MAX( window.ws_col / 2 - 3, 21 ) );
 		else
-		printf( "\033[%d;36H" ANSIREV " TAB " ANSIRST "  Cambia campo", ROW1 );
+			printf( "\033[%d;36H" ANSIREV " TAB " ANSIRST "  Cambia campo", ROW1 );
 	
 	if ( state->current_screen == STATE_LISTING )
 		if ( state->current_layout != LAYOUT_MOBILE )
@@ -490,19 +473,18 @@ int draw_footer( ClientState *state )
 					ROW2,
 					state->current_screen == STATE_LISTING ? MAX( window.ws_col - 9, 33 ) : 4 );
 		else
-		printf( ANSIREV " D " ANSIRST "  Elimina post\033[%d;90H", ROW1 );
+			printf( ANSIREV " D " ANSIRST "  Elimina post\033[%d;90H", ROW1 );
 		
 	if ( state->current_screen != STATE_WRITING )
 		if ( state->current_layout == LAYOUT_MOBILE )
 			printf( "\033[%d;%dH" ANSIREV " Q " ANSIRST " 🚪", ROW1, MAX( window.ws_col - 9, 33 ) );
 		else
-		printf( "\033[%d;63H" ANSIREV " Q " ANSIRST "  Disconnetti ed esci", ROW1 );
+			printf( "\033[%d;63H" ANSIREV " Q " ANSIRST "  Disconnetti ed esci", ROW1 );
 
 	if ( state->current_layout == LAYOUT_STANDARD )
 		printf( "\033[%d;2H\033[0K\033[%dG┃", ROWSTATE, window.ws_col );
 	else
 		printf( "\033[%d;1H\033[0K", ROWSTATE );
-	//draw_box();
 	
 	if ( state->state_label[0] != '\0' )
 		if ( state->current_layout == LAYOUT_MOBILE )
@@ -521,8 +503,6 @@ int drawTui_listView( ClientState *state )
 	//state->listnav_enabled = true;
 	//state->readpost_enabled = state->quit_enabled = true;
 	//state->goback_enabled = false;
-	//strcpy( state->state_label, "Prova" );
-	//*state->state_label = '\0';
 	draw_header( state );
 	draw_footer( state );
 
@@ -540,15 +520,11 @@ int drawTui_listView( ClientState *state )
 	{
 		Post *post = state->cached_posts[ i ];
 		char *ora_post;
-		//char *mittente = malloc( post->len_mittente + 1 );
-		//char *oggetto = malloc( post->len_oggetto + 1 );
 		int64_t timestamp;
 		int selected = state->selected_post == i;
 		int is_new = post->timestamp > state->most_recent_post_shown && strncmp( post->data, state->user, post->len_mittente );
 
 		memcpy( &timestamp, &post->timestamp, 8 );
-		//strncpy( mittente, post->data, post->len_mittente );
-		//strncpy( oggetto, post->data + post->len_mittente, post->len_oggetto );
 		ora_post = stringifyTimestamp( (time_t)timestamp );
 
 		int mittente_trunc_pos = state->current_layout == LAYOUT_MOBILE ? window.ws_col - 6 :
@@ -570,11 +546,9 @@ int drawTui_listView( ClientState *state )
 					      is_new ? ANSINEW : "", ora_post,
 								     mittente_trunc_pos, post->data,
 								     oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
-								 					     ANSIITA "(nessun oggetto)" ANSIRST,
+								 					     ANSIITA "(nessun oggetto)",
 		     			      ANSIRST );
 
-		//free( mittente );
-		//free( oggetto );
 		free( ora_post );
 	}
 
@@ -601,18 +575,10 @@ int drawTui_readPost( ClientState *state )
 	memcpy( &time_buf, &curr_post->timestamp, 8 );
 	strftime( data_buf, 20, "%d/%m/%Y %H:%M:%S", localtime( ( time_t *)&time_buf ) );
 
-	//int l = 0;
 	//unsigned short padding_x = window.ws_col / 10;
 	unsigned short padding_x = state->current_layout == LAYOUT_MOBILE ? 0 : window.ws_col / 10;
 	unsigned short padding_y = 1;
 
-	// maxlen = ws_col - 2 * pad_x
-	// strncpy( oggetto + skip : maxlen ) -> ogg_buf
-	// se ogg_buf non stringa completa -> more = 1, ogg_buf[-3:] = "..."
-	// se skip > 0: ogg_buf[:3] = "..."
-	//
-	// client: l -> se more: skip++
-	// 	   h -> se skip: skip--
 	char oggetto_buf[257];
 	size_t oggetto_len     = curr_post->len_oggetto - state->ogg_offset;
 	size_t oggetto_maxlen  = window.ws_col - 2 * padding_x - strlen( ogg_label );

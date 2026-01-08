@@ -1050,17 +1050,17 @@ int main( int argc, char *argv[] )
 		{
 			if ( errno == EMFILE || errno == ENFILE )
 			{
-				// Stiamo gestendo il massimo di connessioni per processo/sistema,
-				// sbrighiamoci a rifiutare il client e ritorniamo responsivi per gli altri
+				/* Stiamo gestendo il massimo di connessioni per processo/sistema,
+				   sbrighiamoci a rifiutare il client e ritorniamo responsivi per gli altri */
 
 				if ( fd_dummy == -1 )
 				{
-					// Questa è una situazione catastrofica.
-					// Per qualche motivo non avevamo il descriptor di riserva,
-					// ora non possiamo neanche accettare questa connessione.
+					/* Questa è una situazione catastrofica.
+					   Per qualche motivo non avevamo il descriptor di riserva,
+					   ora non possiamo neanche accettare questa connessione.
 
-					// Potremmo aspettare che uno slot della tabella si liberi,
-					// ma considerando le circostanze termino il server per stato inconsistente
+					   Potremmo aspettare che uno slot della tabella si liberi,
+					   ma considerando le circostanze termino il server per stato inconsistente */
 					fprintf( stderr, "server: Tabella FD riempita dopo aver perso il descriptor di riserva! Termino tutte le sessioni.\n" );
 					break;
 				}
@@ -1068,9 +1068,9 @@ int main( int argc, char *argv[] )
 				printf( "server: Tabella FD piena, respingo le connessioni in entrata.\n" );
 				close( fd_dummy );
 
-				// Non vogliamo bloccarci in questa accept, se per qualche ragione non dovessimo connetterci
-				// (connessione chiusa dal client, backlog TCP svuotato dal kernel...) non ci interessa,
-				// anzi il nostro problema è già risolto dato che ora il backlog è vuoto
+				/* Non vogliamo bloccarci in questa accept, se per qualche ragione non dovessimo connetterci
+				   (connessione chiusa dal client, backlog TCP svuotato dal kernel...) non ci interessa,
+				   anzi il nostro problema è già risolto dato che ora il backlog è vuoto		     */
 				int s_list_flags;
 				s_list_flags = fcntl( s_list, F_GETFL );
 				fcntl( s_list, F_SETFL, s_list_flags | O_NONBLOCK );
