@@ -1145,6 +1145,8 @@ int main( int argc, char *argv[] )
 		if ( !sessions[ slot ].buf )
 		{
 			fprintf( stderr, "server: Impossibile allocare %d byte per lo scambio di messaggi, respingo la connessione in entrata.\n", BUF_SIZE * BUF_NPOSTS );
+			unsigned char byebyte = SERV_BYE;
+			send( s_client, &byebyte, 1, MSG_NOSIGNAL | MSG_DONTWAIT );
 			closeSocket( s_client );
 			continue;
 		}

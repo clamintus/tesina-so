@@ -130,7 +130,7 @@ unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsi
 		
 		// non dovremmo arrivare a questo punto,
 		// ma se dovessimo evitiamo di corrompere la stack
-		if ( l > 4096 )
+		if ( l >= 4096 )
 			break;
 
 	      //nextword:

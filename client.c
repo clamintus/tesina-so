@@ -115,11 +115,17 @@ int SendAndGetResponse( int sockfd, unsigned char* msg_buf, size_t *len, Server_
 
 	ssize_t rc;
 
-	while ( ( rc = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
-	{	
-		if ( rc == -1 && errno == EINTR )
-			continue;
-		return -1;
+	while (1)
+	{
+		while ( ( rc = recv( sockfd, msg_buf, 1, 0 ) ) < 1 )
+		{	
+			if ( rc == -1 && errno == EINTR )
+				continue;
+			return -1;
+		}
+
+		if ( *msg_buf != '!' )		// questo byte non è una notifica OOB finita tra i dati protocollari, proseguiamo
+			break;
 	}
 	*len += rc;
 
@@ -775,6 +781,14 @@ resize:
 				else if ( gState.current_screen & UI_PAGENAV && gState.num_posts != 0 &&
 					  gState.loaded_page < ( gState.num_posts - 1 ) / post_limit + 1 )
 				{
+					if ( gState.loaded_page == 255 )
+					{
+						sprintf( gState.state_label, "Impossibile caricare ulteriori pagine (limite di protocollo)" );
+						drawTui( &gState );
+						gState.state_label[0] = '\0';
+						break;
+					}
+
 					sprintf( gState.state_label, "Caricamento dei post..." );
 					drawTui( &gState );
 
