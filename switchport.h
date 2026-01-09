@@ -4,10 +4,10 @@
 #include <switch.h>
 
 
-struct winsize {
-	unsigned short ws_row;
-	unsigned short ws_col;
-};
+//struct winsize {
+//	unsigned short ws_row;
+//	unsigned short ws_col;
+//};
 
 void switchUiInit( void );
 

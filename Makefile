@@ -37,7 +37,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 #   of a homebrew executable (.nro). This is intended to be used for sysmodules.
 #   NACP building is skipped as well.
 #---------------------------------------------------------------------------------
-TARGET		:=	client
+TARGET		:=	server
 BUILD		:=	build
 SOURCES		:=	source .
 DATA		:=	data
@@ -52,7 +52,7 @@ ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS	:=	-g -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
 
-CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DPOSIX_MUTEX -DSTATIC_BUFFER
+CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DPOSIX_MUTEX
 ifdef DEBUG
 CFLAGS	+=	-DDEBUG
 endif

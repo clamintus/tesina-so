@@ -14,8 +14,6 @@
 #include "types.h"
 #ifdef __SWITCH__
 #include "switchport.h"
-
-extern SwkbdConfig gSwkbd;
 #endif
 
 #ifndef __SWITCH__
@@ -39,15 +37,15 @@ void restoreTerminal( void )
 	tcsetattr( 0, TCSANOW, &gOldTerminal );
 }
 #else
-void setTerminalMode( enum terminal_mode mode ) {
-	if ( mode == TERM_CANON )
-		swkbdConfigMakePresetUserName( &gSwkbd );
-	else if ( mode == TERM_CANON_NOECHO )
-		swkbdConfigMakePresetPassword( &gSwkbd );
-	else
-		swkbdConfigMakePresetDefault( &gSwkbd );
-}
-void restoreTerminal( void ) {}
+//void setTerminalMode( enum terminal_mode mode ) {
+//	if ( mode == TERM_CANON )
+//		swkbdConfigMakePresetUserName( &gSwkbd );
+//	else if ( mode == TERM_CANON_NOECHO )
+//		swkbdConfigMakePresetPassword( &gSwkbd );
+//	else
+//		swkbdConfigMakePresetDefault( &gSwkbd );
+//}
+//void restoreTerminal( void ) {}
 #endif
 
 uint16_t conv_u16( void* u16_addr, enum conv_type to_what )
@@ -83,43 +81,43 @@ uint64_t conv_u64( void* u64_addr, enum conv_type to_what )
 	return to_what == TO_HOST ? tmp_u64 : be64toh( tmp_u64 );
 }
 	
-int getValidInput( char* dest, int max_size, const char* prompt )
-{
-#ifdef __SWITCH__
-	swkbdConfigSetGuideText( &gSwkbd, prompt );
-	swkbdConfigSetStringLenMax( &gSwkbd, max_size );
-
-	if ( !R_SUCCEEDED( swkbdShow( &gSwkbd, dest, max_size ) ) )
-		return -1;
-
-	return strlen( dest );
-#else
-	int length;
-
-	while (1)
-	{
-		printf( prompt );
-		fflush( stdout );
-		dest[ max_size - 2 ] = '\0';
-		char* ret = fgets( dest, max_size, stdin );
-		if ( ret == NULL )
-			return -1;
-		if ( dest[ max_size - 2 ] != '\0' && dest[ max_size - 2 ] != '\n' )
-		{
-			while( fgets( dest, max_size, stdin ) != NULL && strlen( dest ) == max_size - 1 );
-			puts( "Errore: Stringa di input troppo lunga, riprovare." );
-			fflush( stdout );
-		}
-		else if ( dest[0] != '\n' )
-			break;
-	}
-
-	length = strlen( dest );
-	dest[ --length ] = '\0';
-
-	return length;
-#endif
-}
+//int getValidInput( char* dest, int max_size, const char* prompt )
+//{
+//#ifdef __SWITCH__
+//	swkbdConfigSetGuideText( &gSwkbd, prompt );
+//	swkbdConfigSetStringLenMax( &gSwkbd, max_size );
+//
+//	if ( !R_SUCCEEDED( swkbdShow( &gSwkbd, dest, max_size ) ) )
+//		return -1;
+//
+//	return strlen( dest );
+//#else
+//	int length;
+//
+//	while (1)
+//	{
+//		printf( prompt );
+//		fflush( stdout );
+//		dest[ max_size - 2 ] = '\0';
+//		char* ret = fgets( dest, max_size, stdin );
+//		if ( ret == NULL )
+//			return -1;
+//		if ( dest[ max_size - 2 ] != '\0' && dest[ max_size - 2 ] != '\n' )
+//		{
+//			while( fgets( dest, max_size, stdin ) != NULL && strlen( dest ) == max_size - 1 );
+//			puts( "Errore: Stringa di input troppo lunga, riprovare." );
+//			fflush( stdout );
+//		}
+//		else if ( dest[0] != '\n' )
+//			break;
+//	}
+//
+//	length = strlen( dest );
+//	dest[ --length ] = '\0';
+//
+//	return length;
+//#endif
+//}
 
 ssize_t getPostSize( Post *post )
 {
