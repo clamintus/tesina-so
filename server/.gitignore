@@ -3,6 +3,8 @@
 *.nacp
 *.nro
 build/
+server
+client
 serverconf
 msgdb
 users
