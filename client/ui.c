@@ -800,6 +800,7 @@ void drawError( ClientState *state, const char *error_msg )
 			for ( int j = x - 1; j < x + lmax + 1; j++ )
 				printf( "\033[%d;%dH ", i, j );
 		printf( ANSIRST "\033[%d;%dH%s" ANSIREV, y + l + 1, window.ws_col / 2 - strlen( btn ) / 2, btn );
+		printf( "\033[?25l" );
 	}
 
 	for ( int i = 0; i < l; i++ )
