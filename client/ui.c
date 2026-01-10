@@ -495,7 +495,7 @@ int draw_footer( ClientState *state )
 		printf( "\033[%d;%dH" ANSIREV "%s" ANSIRST GOBACKLBL       "\033[%d;%dH", ROW2,
 											  state->current_screen == STATE_SINGLEPOST ? COL3 : COL1B,
 											  state->current_screen == STATE_WRITING ? BTNBCK2 : BTNBACK,
-		     							      		  ROW2 );
+		     							      		  ROW2, COL1 );
 
 	if ( state->current_screen == STATE_WRITING )
 		if ( state->current_layout == LAYOUT_MOBILE )
