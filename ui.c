@@ -214,6 +214,13 @@ endloop:
 	}
 
 	//printf( "\033[%d;%dH%d lines", y1 + 1, x0 + 2, l );
+	
+	// Scrivi la percentuale di scorrimento del testo
+	if ( l > y_len && skip != ( unsigned int )-1 )
+	{
+		float displayed_ratio = ( float )( start_index + y_len ) / ( float )l; 
+		printf( "\033[%d;%dH%3.0f%%", y1 + 1, x1 - 3, displayed_ratio * 100 );
+	}
 
 	return l;
 }
@@ -347,6 +354,7 @@ int draw_header( ClientState *state )
 	printf( "\033[%d;%dH%s\033[%d;%dH%s", row_hdr, 1 + col_off, left_text,
 					      row_hdr, window.ws_col - right_text_len - col_off + 1 + 
 					      ( state->current_layout == LAYOUT_MOBILE ? 2 : 0 ), right_text );
+	printf( ANSIRST );
 
 	return state->current_layout == LAYOUT_MOBILE ? 1 : 3;
 }
