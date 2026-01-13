@@ -585,17 +585,20 @@ oob:
 
 			unsigned int old_posts = gState.num_posts;
 
-			if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
+			if ( gState.current_screen != STATE_INTRO )
 			{
-				gState.current_screen = STATE_ERROR;
-				drawError( &gState, "Connessione col server persa." );
-				while ( getchar() != '\n' );
-				exitProgram( EXIT_FAILURE );
-			}
+				if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
+				{
+					gState.current_screen = STATE_ERROR;
+					drawError( &gState, "Connessione col server persa." );
+					while ( getchar() != '\n' );
+					exitProgram( EXIT_FAILURE );
+				}
 
-			if ( gState.num_posts > old_posts )
-				sprintf( gState.state_label, "Nuovi post disponibili!" );
-			drawTui( &gState );
+				if ( gState.num_posts > old_posts )
+					sprintf( gState.state_label, "Nuovi post disponibili!" );
+				drawTui( &gState );
+			}
 
 			gNewDataAvailable = 0;
 		}
@@ -603,10 +606,12 @@ oob:
 		if ( gResized )
 		{
 resize:
-			gState.post_offset = 0;		// per non incasinare il testo del post
-			gState.ogg_offset = 0;
-			updateWinSize( &gState );
-			drawTui( &gState );
+			if ( gState.current_screen != STATE_INTRO )
+			{
+				gState.post_offset = 0;		// per non incasinare il testo del post
+				gState.ogg_offset = 0;
+				drawTui( &gState );
+			}
 
 			gResized = 0;
 		}
