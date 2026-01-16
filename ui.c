@@ -98,6 +98,9 @@ char *stringifyTimestamp( time_t timestamp )
 #define ANSIRST "\033[0m"
 #define ANSIDIS "\033[30m\033[100m"
 #define ANSINEW "\033[1m\033[3m\033[97m\033[5m"
+//#define ANSIMIN "\033[38;2;204;119;34m"
+#define ANSIMIN "\033[36m"
+#define ANSIFGRST "\033[39m"
 unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1, unsigned int skip )
 {
 	unsigned short x_len = x1 - x0 + 1;
@@ -219,7 +222,7 @@ endloop:
 	if ( l > y_len && skip != ( unsigned int )-1 )
 	{
 		float displayed_ratio = ( float )( start_index + y_len ) / ( float )l; 
-		printf( "\033[%d;%dH%3.0f%%", y1 + 1, x1 - 3, displayed_ratio * 100 );
+		printf( ANSIMIN "\033[%d;%dH%3.0f%%" ANSIRST, y1 + 1, x1 - 3, displayed_ratio * 100 );
 	}
 
 	return l;
@@ -550,12 +553,13 @@ int drawTui_listView( ClientState *state )
 		char* UNSEL = state->current_layout == LAYOUT_MOBILE ? ""        : "  ";
 
 		printf( "\033[%d;%dH", 1 + y_off + i - state->page_offset, x_off );
-		printf( "%s%s%s %.*s %.*s%s", selected ? SEL : UNSEL,
-					      is_new ? ANSINEW : "", ora_post,
-								     mittente_trunc_pos, post->data,
-								     oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
-								 					     ANSIITA "(nessun oggetto)",
-		     			      ANSIRST );
+		printf( "%s%s%s %s%.*s%s %.*s%s", selected ? SEL : UNSEL,
+					          is_new ? ANSINEW : "", ora_post,
+						  ANSIMIN,
+						  mittente_trunc_pos, post->data, ANSIFGRST,
+						  oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
+								 			  ANSIITA "(nessun oggetto)",
+		     			          ANSIRST );
 
 		free( ora_post );
 	}
