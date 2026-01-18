@@ -44,6 +44,10 @@ DATA		:=	data
 INCLUDES	:=	include .
 #ROMFS	:=	romfs
 
+APP_TITLE	:=	Client BBS
+APP_AUTHOR	:=	clamintus
+APP_VERSION	:=	1.0
+
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
