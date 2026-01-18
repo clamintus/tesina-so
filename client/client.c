@@ -730,35 +730,38 @@ oob:
 				
 			unsigned int old_posts = gState.num_posts;
 
-			if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
+			if ( gState.current_screen != STATE_INTRO )
 			{
-				gState.current_screen = STATE_ERROR;
-				drawError( &gState, "Connessione col server persa." );
-				while ( getchar() != '\n' );
-				exitProgram( EXIT_FAILURE );
-			}
-
-			if ( gState.num_posts > old_posts )
-			{
-				sprintf( gState.state_label, "Nuovi post disponibili!" );
-#ifdef __SWITCH__
-				s32 total_entries = 0;
-				memset( unique_pad_ids, 0, sizeof( unique_pad_ids ) );
-
-				// Get the UniquePadIds for the specified controller, which will then be used with hidsysSetNotificationLedPattern*.
-				// If you want to get the UniquePadIds for all controllers, you can use hidsysGetUniquePadIds instead.
-				if ( R_SUCCEEDED( hidsysGetUniquePadsFromNpad( padIsHandheld( &gPad ) ? HidNpadIdType_Handheld : HidNpadIdType_No1, unique_pad_ids, 2, &total_entries ) ) )
+				if ( loadPosts( msg_buf, &msg_size, gState.loaded_page ) == -1 )
 				{
-					for(s32 i=0; i<total_entries; i++)  // System will skip sending the subcommand to controllers where this isn't available.
-					{
-
-					    // Attempt to use hidsysSetNotificationLedPatternWithTimeout first with a 2 second timeout, then fallback to hidsysSetNotificationLedPattern on failure. See hidsys.h for the requirements for using these.
-					    hidsysSetNotificationLedPatternWithTimeout(&pattern, unique_pad_ids[i], 2000000000ULL);
-					}
+					gState.current_screen = STATE_ERROR;
+					drawError( &gState, "Connessione col server persa." );
+					while ( getchar() != '\n' );
+					exitProgram( EXIT_FAILURE );
 				}
+
+				if ( gState.num_posts > old_posts )
+				{
+					sprintf( gState.state_label, "Nuovi post disponibili!" );
+#ifdef __SWITCH__
+					s32 total_entries = 0;
+					memset( unique_pad_ids, 0, sizeof( unique_pad_ids ) );
+
+					// Get the UniquePadIds for the specified controller, which will then be used with hidsysSetNotificationLedPattern*.
+					// If you want to get the UniquePadIds for all controllers, you can use hidsysGetUniquePadIds instead.
+					if ( R_SUCCEEDED( hidsysGetUniquePadsFromNpad( padIsHandheld( &gPad ) ? HidNpadIdType_Handheld : HidNpadIdType_No1, unique_pad_ids, 2, &total_entries ) ) )
+					{
+						for(s32 i=0; i<total_entries; i++)  // System will skip sending the subcommand to controllers where this isn't available.
+						{
+
+						    // Attempt to use hidsysSetNotificationLedPatternWithTimeout first with a 2 second timeout, then fallback to hidsysSetNotificationLedPattern on failure. See hidsys.h for the requirements for using these.
+						    hidsysSetNotificationLedPatternWithTimeout(&pattern, unique_pad_ids[i], 2000000000ULL);
+						}
+					}
 #endif
+				}
+				drawTui( &gState );
 			}
-			drawTui( &gState );
 
 			gNewDataAvailable = 0;
 
@@ -767,10 +770,12 @@ oob:
 		if ( gResized )
 		{
 resize:
-			gState.post_offset = 0;		// per non incasinare il testo del post
-			gState.ogg_offset = 0;
-			updateWinSize( &gState );
-			drawTui( &gState );
+			if ( gState.current_screen != STATE_INTRO )
+			{
+				gState.post_offset = 0;		// per non incasinare il testo del post
+				gState.ogg_offset = 0;
+				drawTui( &gState );
+			}
 
 			gResized = 0;
 		}
