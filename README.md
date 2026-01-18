@@ -1,22 +1,27 @@
 # Tesina di Sistemi - Bacheca Elettronica
--------------------
-Un sistema di messaggistica per sistemi POSIX-like
+
+Un sistema di messaggistica client-server ad alte prestazioni per sistemi POSIX progettato con focus particolare su robustezza, efficienza e portabilità.
+Sviluppato interamente in C puro e dipendente solo da libc.
+
+## Caratteristiche
 - Pure C, nessuna libreria esterna
 - POSIX-compliant
-- Protocollo binario ad-hoc ottimizzato
-- Concorrente
+- Protocollo binario ad-hoc ottimizzato ed efficiente
+- Server concorrente multithreaded (thread-per-client)
 - Real-Time
 	- Notifiche TCP Out-Of-Band e segnali SIGURG
-	- I/O multiplexing nel client
+	- I/O multiplexing nel client, massima reattività
 - Split-locked con 2 mutex/semafori
-- Database per persistenza post robusto
-	- Atomic Save
+- Persistenza robusta
+	- Database testuale "CRUD-lite" per i post
+	- Atomic Save (salvataggio atomico tramite file temporaneo)
 	- Sanitizzazione input
 - Configurabile a 2 o 3 livelli di privilegi
 	- admin: legge, scrive e cancella TUTTI i post
 	- utente: legge, scrive e cancella i suoi post
 	- (anonimo: legge)
-- TUI Responsive a 2 layout
+- [TUI Responsive a 2 layout](#tui)
+- [Portabile e Cross-Platform (testato su più architetture/sistemi)](#cross-platform)
 
 ## Compilazione
 ```shell
@@ -27,6 +32,16 @@ Per usare l'implementazione della sincronizzazione con POSIX Mutex invece che se
 make POSIX_MUTEX=1
 ```
 
+## TUI
+<video src="https://github.com/user-attachments/assets/e8885461-a395-40ab-aba0-1799dc39450b"  controls="controls" muted="muted" autoplay="autoplay" loop="loop" style="max-width: 100%;"></video>
+
+Il layer di presentazione del client è strutturato attraverso una TUI sviluppata interamente tramite sequenze di escape ANSI e attributi del terminale (_ioctl_, _termios_).
+La TUI è adattiva e "responsive" perché possiede due layout che si attivano automaticamente in base alla grandezza del terminale:
+- **Layout Standard**: Gli elementi grafici sono visualizzati in formato esteso. Quando c'è abbastanza spazio è automaticamente attivato.
+- **Layout Mobile**: Gli elementi sono più compatti, ogni cella è sfruttata; molte label sono sostituite da [emoticon Unicode](https://en.wikipedia.org/wiki/Emoticons_(Unicode_block)) per compattezza, motivo per cui questo layout richiede il loro supporto da parte del terminale per essere visualizzato correttamente.
+
+La corretta visualizzazione della UI è garantita su schermate che variano da enormi fino a molto piccole (~10 caratteri di altezza/larghezza).
+Anche se la UI si dovesse corrompe temporaneamente su finestre ancora più piccole, la logica del programma è illesa grazie alla separazione netta tra i due layer e il client continua a funzionare normalmente.
 
 ## Utilizzo
 ### Server
