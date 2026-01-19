@@ -39,9 +39,6 @@ struct session_data {
 	struct in_addr  client_addr;
 	int             sockfd;
 	unsigned char  *buf;
-#ifdef __SWITCH__
-	Thread		sw_thread;
-#endif
 } sessions[ MAXCONNS ] = { 0 };
 
 char buffer[BUF_SIZE];
@@ -645,15 +642,14 @@ void closeSession( struct session_data *session )
 {
 	closeSocket( session->sockfd );
 	free( session->buf );
-#ifndef __SWITCH__
 	sessions_lock();
 	session->tid = 0;
 	sessions_unlock();
+#if !defined(__SWITCH__) || defined(DEBUG)
 	printf( "server: Sessione di %s terminata\n", inet_ntoa( session->client_addr ) );
+ #ifndef __SWITCH__
 	_fflush( stdout );
-#endif
-#ifdef __SWITCH__
-	threadExit();
+ #endif
 #endif
 }
 
@@ -663,11 +659,8 @@ void _switchthread_printf( ... )
 {}
 
 #define printf _switchthread_printf
-
-void clientSession( void* arg )
-#else
-void* clientSession( void* arg )
 #endif
+void* clientSession( void* arg )
 {
 	struct session_data *session = ( struct session_data *)arg;
 	char		    client_user[256];
@@ -680,9 +673,9 @@ void* clientSession( void* arg )
 
 	sigfillset( &sigset );
 	pthread_sigmask( SIG_BLOCK, &sigset, NULL );
+#endif
 
 	pthread_detach( pthread_self() );
-#endif
 
 	if ( !gAllowGuests )
 	{
@@ -697,22 +690,14 @@ void* clientSession( void* arg )
 			if ( ret < 0 )
 			{
 				closeSession( session );
-#ifdef __SWITCH__
-				return;
-#else
 				return NULL;
-#endif
 			}
 			else if ( ret )
 			{
 				fprintf( stderr, "server (#%lu): Ricevuto campo inaspettato (%#010b diverso da LOGIN). Chiudo la connessione.\n",
 						(unsigned long)session->tid, *msg_buf );
 				closeSession( session );
-#ifdef __SWITCH__
-				return;
-#else
 				return NULL;
-#endif
 			}
 			
 			// Rimane il caso CLI_LOGIN
@@ -750,11 +735,7 @@ void* clientSession( void* arg )
 		if ( ret < 0 )
 		{
 			closeSession( session );
-#ifdef __SWITCH__
-			return;
-#else
 			return NULL;
-#endif
 		}
 
 		switch ( *msg_buf )
@@ -940,11 +921,7 @@ void* clientSession( void* arg )
 					database_unlock();
 					fprintf( stderr, "server: Impossibile aggiornare il database dei messaggi" );
 					closeSession( session );
-#ifdef __SWITCH__
-					return;
-#else
 					return NULL;
-#endif
 				}
 
 				notifyAllClientsExcept( session );
@@ -1308,16 +1285,6 @@ int main( int argc, char *argv[] )
 	
 	// Ormai abbiamo detachato i thread delle sessioni subito per evitare l'accumulo di zombie,
 	// non possiamo più fare pthread_join. Facciamo semplicemente così, che è anche meglio
-#ifdef __SWITCH__
-	for ( int i = 0; i < MAXCONNS; i++ )
-	{
-		if ( sessions[ i ].tid )
-		{
-			threadWaitForExit( &sessions[ i ].sw_thread );
-			threadClose( &sessions[ i ].sw_thread );
-		}
-	}
-#else
 	while (1)
 	{
 		int active_sessions = 0;
@@ -1336,7 +1303,6 @@ int main( int argc, char *argv[] )
 
 		usleep( 10000 );
 	}
-#endif
 
 	close( fd_dummy );
 	closeSocket( s_list );
