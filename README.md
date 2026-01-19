@@ -92,6 +92,15 @@ make
 ```shell
 ./server
 ```
+Il server ha bisogno di essere configurato: vedi [Configurazione](#configurazione).
+
+
+### Client
+```shell
+./client <indirizzo> <porta>
+```
+
+## Configurazione
 Il server ha bisogno di un file di configurazione `serverconf` nella stessa directory dell'eseguibile, strutturato come segue:
 - File `serverconf`: formato `key=value`, chiavi valide:
 	- `AllowGuests`: abilita il terzo livello di privilegi (**int**, 0/1)
@@ -119,13 +128,6 @@ Gli utenti sono letti da un database testuale presente nella stessa directory de
 ```bash
 ./useradd.sh <username> <password> <is_admin>
 ```
-
-
-### Client
-```shell
-./client <indirizzo> <porta>
-```
-
 -------------
 ## Benchmarking
 Nella repository è presente anche una suite di stress test scritta in Python che ho utilizzato per verificare la robustezza e valutare l'efficienza del sistema (e arrivare a circa il 100% di code coverage):
