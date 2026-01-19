@@ -63,7 +63,7 @@ Per validare l'effettiva portabilità e correttezza del codice platform-agnostic
 - Nintendo Switch: `aarch64-none-elf-gcc` dalla toolchain _devkitPro_
 ## Nintendo Switch
 
-Il port su **Nintendo Switch**, sviluppato nella branch `switch-port`, è stato realizzato con l'obiettivo di validare la portabilità e l'efficienza del sistema su un contesto embedded caratterizzato da vincoli di esecuzione molto più stringenti rispetto a un desktop standard.
+Il port su **Nintendo Switch**, sviluppato nella branch `switch-port`, è stato realizzato con l'obiettivo di verificare se la portabilità e l'efficienza del sistema fossero idonee anche a un contesto embedded caratterizzato da vincoli di esecuzione molto più stringenti rispetto a un desktop standard.
 - La Switch è una console da gioco prodotta da Nintendo nel 2017. È a tutti gli effetti un dispositivo embedded ad alte prestazioni (4 GB di RAM condivisa, SoC NVIDIA Tegra X1 a 4 core con frequenza di clock ottimizzata per il consumo energetico) che mette a disposizione **un ambiente di esecuzione limitato** dettato dalle scelte di design architetturale del produttore (gestione aggressiva delle risorse in favore dell'autonomia della batteria e della prevedibilità del sistema).
 - Esegue un sistema proprietario, Horizon, che:
     - ha un'architettura a microkernel;
