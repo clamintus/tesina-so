@@ -28,7 +28,11 @@ const char* DATABASE_PATH = "msgdb";
 const char* USERDB_PATH   = "users";
 const int   LISTENQ       = 1024;
 
+#ifdef __SWITCH__
+#define MAXCONNS 16
+#else
 #define MAXCONNS 1024
+#endif
 #define MAXPOSTS 2048
 #define MAXUSERS 256
 #define BUF_SIZE 65536
@@ -988,18 +992,37 @@ int main( int argc, char *argv[] )
 	sigaction( SIGINT,  &sa,  NULL );
 	sigaction( SIGTERM, &sa,  NULL );
 #else
-	socketInitializeDefault();
+	padConfigureInput( 1, HidNpadStyleSet_NpadStandard );
+	padInitializeDefault( &gPad );
+
+	SocketInitConfig conf = {
+		.tcp_tx_buf_size     = 0x8000,
+		.tcp_rx_buf_size     = 0x2000,
+		.tcp_tx_buf_max_size = 0x10000,
+		.tcp_rx_buf_max_size = 0x2000,
+		.udp_tx_buf_size     = 0,
+		.udp_rx_buf_size     = 0,
+
+		.sb_efficiency       = 4,
+
+		.num_bsd_sessions    = MAXCONNS,
+		.bsd_service_type    = BsdServiceType_System
+	};
+
+	Result bsd_result = socketInitialize( &conf );
 
 	consoleInit( NULL );
- #ifdef DEBUG
 
+ #ifdef DEBUG
 	nxlinkStdio();
  #else
 	consoleDebugInit( debugDevice_CONSOLE );
  #endif
-
-	padConfigureInput( 1, HidNpadStyleSet_NpadStandard );
-	padInitializeDefault( &gPad );
+	if ( R_FAILED( bsd_result ) )
+		err( EXIT_FAILURE, "Impossibile inizializzare il servizio di rete: %#X (M: %d, D: %d)", bsd_result,
+											      R_MODULE( bsd_result ),
+											 R_DESCRIPTION( bsd_result )
+		   );
 #endif
 
 #ifdef POSIX_MUTEX
