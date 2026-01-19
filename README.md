@@ -81,9 +81,9 @@ Il codice è stato portato su Switch mantenendo la sua architettura pressoché i
 ```
 Il server ha bisogno di un file di configurazione `serverconf` e (se necessario) di un database di utenti `users`, entrambi nella stessa directory dell'eseguibile.
 - File `serverconf`: formato `key=value`, chiavi valide:
-        - `AllowGuests`: abilita il terzo livello di privilegi (**int**, 0/1)
-        - `Port`: indica la porta di ascolto da utilizzare (**int**, 0~65535)
-        - `Title` (_opzionale_): indica il titolo della bacheca che i client mostreranno nella schermata introduttiva e nell'header nella TUI (**string**, max 250 caratteri)
+	- `AllowGuests`: abilita il terzo livello di privilegi (**int**, 0/1)
+	- `Port`: indica la porta di ascolto da utilizzare (**int**, 0~65535)
+	- `Title` (_opzionale_): indica il titolo della bacheca che i client mostreranno nella schermata introduttiva e nell'header nella TUI (**string**, max 250 caratteri)
 
 Esempio:
 ```
@@ -92,9 +92,9 @@ Port=3000
 Title=Progetto Sistemi
 ```
 - File `users`: record testuali (uno per riga) con campi separati dal carattere ASCII 0x1F (Unit Separator). Ogni utente ha i seguenti campi:
-        - **username**
-        - **password**
-        - **is_admin** (0 oppure 1)
+	- **username**
+	- **password**
+	- **is_admin** (0 oppure 1)
 ```
 <user1> \x1f <pw1> \x1f <is_admin1>
 <user2> \x1f <pw2> \x1f <is_admin2>
