@@ -1154,7 +1154,7 @@ int main( int argc, char *argv[] )
 		printf( "server: Allocati %d byte per lo scambio di messaggi della nuova sessione\n", BUF_SIZE * BUF_NPOSTS );
 #endif
 
-		if ( pthread_create( &sessions[ slot ].tid, NULL, clientSession, &sessions[ slot ] ) )
+		if ( ( errno = pthread_create( &sessions[ slot ].tid, NULL, clientSession, &sessions[ slot ] ) ) )
 		{
 			warn( "server: Impossibile spawnare un nuovo thread per processare la sessione di %s. Chiudo la connessione.\nMotivo",
 					inet_ntoa( client_addr.sin_addr ) );
