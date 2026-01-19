@@ -645,7 +645,9 @@ inline static void notifyAllClientsExcept( struct session_data *sender )
 void closeSession( struct session_data *session )
 {
 	closeSocket( session->sockfd );
+#ifndef STATIC_BUFFER
 	free( session->buf );
+#endif
 	sessions_lock();
 	session->tid = 0;
 	sessions_unlock();
@@ -670,7 +672,11 @@ void* clientSession( void* arg )
 	char		    client_user[256];
 	char		    client_pass[256];
 	int 		    user_auth_level = -1;
+#ifdef STATIC_BUFFER
+	unsigned char	    msg_buf[ BUF_SIZE * BUF_NPOSTS ];
+#else
 	unsigned char* 	    msg_buf = session->buf;	// buffer enorme (buffer o buffet?) gentilmente allocato dal main thread
+#endif
 	size_t 		    msg_size;
 #ifndef __SWITCH__
 	sigset_t            sigset;
@@ -1253,6 +1259,7 @@ int main( int argc, char *argv[] )
 
 		sessions[ slot ].sockfd  = s_client;
 		sessions[ slot ].client_addr = client_addr.sin_addr;
+#ifndef STATIC_BUFFER
 		sessions[ slot ].buf = malloc( BUF_SIZE * BUF_NPOSTS );
 		if ( !sessions[ slot ].buf )
 		{
@@ -1262,26 +1269,27 @@ int main( int argc, char *argv[] )
 			closeSocket( s_client );
 			continue;
 		}
-#ifdef DEBUG
+ #ifdef DEBUG
 		printf( "server: Allocati %d byte per lo scambio di messaggi della nuova sessione\n", BUF_SIZE * BUF_NPOSTS );
+ #endif
 #endif
 
-#ifdef __SWITCH__
-		//pthread_attr_t attr;
-		//printf( "%d", pthread_attr_init( &attr ) );
-		//printf( "%d", pthread_attr_setstacksize( &attr, 128 * 1024 ) );
-		//if ( pthread_create( &sessions[ slot ].tid, &attr, clientSession, &sessions[ slot ] ) )
-		sessions[ slot ].tid = ( pthread_t )1;
-		if ( !R_SUCCEEDED( threadCreate( &sessions[ slot ].sw_thread, clientSession, &sessions[ slot ], NULL, 128 * 1024, 0x2C, -2 ) ) ||
-		     !R_SUCCEEDED( threadStart( &sessions[ slot ].sw_thread ) ) )
+#ifdef STATIC_BUFFER
+		// abbiamo bisogno di una stack più grande
+		pthread_attr_t attr;
+		pthread_attr_init( &attr );
+		pthread_attr_setstacksize( &attr, 16 * 1024 + BUF_SIZE * BUF_NPOSTS );
+		if ( ( errno = pthread_create( &sessions[ slot ].tid, &attr, clientSession, &sessions[ slot ] ) ) )
 #else
-		if ( pthread_create( &sessions[ slot ].tid, NULL, clientSession, &sessions[ slot ] ) )
+		if ( ( errno = pthread_create( &sessions[ slot ].tid, NULL, clientSession, &sessions[ slot ] ) ) )
 #endif
 		{
 			warn( "server: Impossibile spawnare un nuovo thread per processare la sessione di %s. Chiudo la connessione.\nMotivo",
 					inet_ntoa( client_addr.sin_addr ) );
 			closeSocket( s_client );
+#ifndef STATIC_BUFFER
 			free( sessions[ slot ].buf );
+#endif
 			sessions_lock();
 			sessions[ slot ].tid = 0;
 			sessions_unlock();
