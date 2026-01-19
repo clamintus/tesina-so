@@ -80,23 +80,32 @@ Il codice è stato portato su Switch mantenendo la sua architettura pressoché i
 - **gestione sincrona degli eventi** (TCP Urgent data ed errori di rete), data l'assenza dei segnali UNIX;
 - **l'astrazione dell'interfaccia utente**: adattamento delle label dei tasti in modo contestuale al target di compilazione.
 
+### Compilazione del porting
+Prerequisiti: [ambiente devkitPro](https://switchbrew.org/wiki/Setting_up_Development_Environment) con il metapackage `switch-dev` installato
+```bash
+git checkout switch-port
+make
+```
+
 ## Utilizzo
 ### Server
 ```shell
 ./server
 ```
-Il server ha bisogno di un file di configurazione `serverconf` e (se necessario) di un database di utenti `users`, entrambi nella stessa directory dell'eseguibile.
+Il server ha bisogno di un file di configurazione `serverconf` nella stessa directory dell'eseguibile, strutturato come segue:
 - File `serverconf`: formato `key=value`, chiavi valide:
 	- `AllowGuests`: abilita il terzo livello di privilegi (**int**, 0/1)
 	- `Port`: indica la porta di ascolto da utilizzare (**int**, 0~65535)
 	- `Title` (_opzionale_): indica il titolo della bacheca che i client mostreranno nella schermata introduttiva e nell'header nella TUI (**string**, max 250 caratteri)
 
 Esempio:
-```
+```ini
 AllowGuests=0
 Port=3000
 Title=Progetto Sistemi
 ```
+Se il server è configurato per non accettare sessioni anonime, necessita obbligatoriamente di aver configurato almeno un utente.
+Gli utenti sono letti da un database testuale presente nella stessa directory dell'eseguibile:
 - File `users`: record testuali (uno per riga) con campi separati dal carattere ASCII 0x1F (Unit Separator). Ogni utente ha i seguenti campi:
 	- **username**
 	- **password**
