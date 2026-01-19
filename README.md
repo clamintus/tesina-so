@@ -55,6 +55,12 @@ Per validare l'effettiva portabilità e correttezza del codice platform-agnostic
 
 - La colonna **Interoperabilità** certifica il successo dei test in scenario eterogeneo (es. server MIPS connesso a client x86_64), confermando l'indipendenza del protocollo binario dall'endianness e dall'allineamento della memoria della macchina ospite.
 
+## Toolchain di compilazione usate
+
+- x86_64: `gcc` standard
+- Android: `clang` (Android NDK)
+- MIPS: `mips64-linux-gnu-gcc`
+- Nintendo Switch: `aarch64-none-elf-gcc` dalla toolchain _devkitPro_
 ## Nintendo Switch
 
 Il port su **Nintendo Switch**, sviluppato nella branch `switch-port`, è stato realizzato con l'obiettivo di validare la portabilità e l'efficienza del sistema su un contesto embedded caratterizzato da vincoli di esecuzione molto più stringenti rispetto a un desktop standard.
