@@ -23,14 +23,7 @@ Sviluppato interamente in C puro e dipendente solo da libc.
 - [TUI Responsive a 2 layout](#tui)
 - [Portabile e Cross-Platform (testato su più architetture/sistemi)](#piattaforme)
 
-## Compilazione
-```shell
-make
-```
-Per usare l'implementazione della sincronizzazione con POSIX Mutex invece che semafori System-V:
-```shell
-make POSIX_MUTEX=1
-```
+Per la documentazione del protocollo vedere [`protocol.h`](protocol.h).
 
 ## TUI
 <video src="https://github.com/user-attachments/assets/e8885461-a395-40ab-aba0-1799dc39450b"  controls="controls" muted="muted" autoplay="autoplay" loop="loop" style="max-width: 100%;"></video>
@@ -54,13 +47,11 @@ Per validare l'effettiva portabilità e correttezza del codice platform-agnostic
 | ARMv8  | Horizon (Nintendo Switch) | Homebrew | newlib | ✅ | ✅ | ✅ | Test embedded. Esegue nativamente sul sistema proprietario **Horizon** via devkitPro/Homebrew. Vedi [Nintendo Switch](#nintendo-switch) |
 
 - La colonna **Interoperabilità** certifica il successo dei test in scenario eterogeneo (es. server MIPS connesso a client x86_64), confermando l'indipendenza del protocollo binario dall'endianness e dall'allineamento della memoria della macchina ospite.
-
-## Toolchain di compilazione usate
-
-- x86_64: `gcc` standard
-- Android: `clang` (Android NDK)
-- MIPS: `mips64-linux-gnu-gcc`
-- Nintendo Switch: `aarch64-none-elf-gcc` dalla toolchain _devkitPro_
+- **Toolchain di compilazione usate**:
+	- x86_64: `gcc` standard
+	- Android: `clang` (Android NDK)
+	- MIPS: `mips64-linux-gnu-gcc`
+	- Nintendo Switch: `aarch64-none-elf-gcc` dalla toolchain _devkitPro_
 ## Nintendo Switch
 
 Il port su **Nintendo Switch**, sviluppato nella branch `switch-port`, è stato realizzato con l'obiettivo di verificare se la portabilità e l'efficienza del sistema fossero idonee anche a un contesto embedded caratterizzato da vincoli di esecuzione molto più stringenti rispetto a un desktop standard.
@@ -80,12 +71,33 @@ Il codice è stato portato su Switch mantenendo la sua architettura pressoché i
 - **gestione sincrona degli eventi** (TCP Urgent data ed errori di rete), data l'assenza dei segnali UNIX;
 - **l'astrazione dell'interfaccia utente**: adattamento delle label dei tasti in modo contestuale al target di compilazione.
 
-### Compilazione del porting
+## Compilazione
+### Standard (Linux/Android)
+Il Makefile rileva automaticamente l'ambiente Linux oppure Android e compila per il giusto target di conseguenza.
+
+```shell
+make
+```
+Per usare l'implementazione della sincronizzazione con POSIX Mutex invece che semafori System-V:
+```shell
+make POSIX_MUTEX=1
+```
+### Porting (Nintendo Switch)
+
 Prerequisiti: [ambiente devkitPro](https://switchbrew.org/wiki/Setting_up_Development_Environment) con il metapackage `switch-dev` installato
 ```bash
 git checkout switch-port
 make
 ```
+
+### Cross-Arch (Linux su MIPS o altre architetture)
+Il Makefile è flessibile e supporta l'override del compilatore usato nello script.
+```bash
+CC=mips64-linux-gnu-gcc make
+# per provare il programma da un'architettura diversa basta usare QEMU userland:
+qemu-mips64 server	
+```
+
 
 ## Utilizzo
 ### Server
@@ -129,7 +141,7 @@ Gli utenti sono letti da un database testuale presente nella stessa directory de
 ./useradd.sh <username> <password> <is_admin>
 ```
 -------------
-## Benchmarking
+## Benchmarking & QA
 Nella repository è presente anche una suite di stress test scritta in Python che ho utilizzato per verificare la robustezza e valutare l'efficienza del sistema (e arrivare a circa il 100% di code coverage):
 - `stress-connect.py`: Flood di connessioni e disconnessioni rapide (verifica la gestione della memoria e dei thread)
 ```bash
