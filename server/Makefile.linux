@@ -1,0 +1,45 @@
+all: server
+
+.PHONY: all clean
+
+CC	:= gcc
+CFLAGS  := -pthread
+LDFLAGS := -pthread
+
+BUILD	:= build_linux
+
+ifdef RELEASE
+	CFLAGS += -O2
+else
+	CFLAGS += -g
+endif
+
+ifdef ANDROID__BUILD_VERSION_SDK
+	CFLAGS += -DPOSIX_MUTEX
+else ifdef POSIX_MUTEX
+	CFLAGS += -DPOSIX_MUTEX
+endif
+
+ifdef DEBUG
+	CFLAGS += -DDEBUG
+endif
+ifeq ($(DEBUG),2)
+	CFLAGS += -fsanitize=address,undefined
+	LDFLAGS += -fsanitize=address,undefined
+endif
+
+server: $(BUILD)/server.o $(BUILD)/helpers.o
+	$(CC) $(LDFLAGS) -o server $(BUILD)/server.o $(BUILD)/helpers.o
+
+$(BUILD):
+	mkdir -p $(BUILD)
+
+$(BUILD)/server.o: server.c helpers.h types.h | $(BUILD)
+	$(CC) -c $(CFLAGS) server.c -o $(BUILD)/server.o
+
+$(BUILD)/helpers.o: helpers.c helpers.h | $(BUILD)
+	$(CC) -c $(CFLAGS) helpers.c -o $(BUILD)/helpers.o
+	
+clean:
+	rm -rf $(BUILD)
+	rm -f server

@@ -2,6 +2,8 @@
 *.elf
 *.nacp
 *.nro
+client/client
+server/server
 build/
 serverconf
 msgdb

@@ -1,0 +1,13 @@
+all: client server
+
+.PHONY: client server clean
+
+client:
+	@$(MAKE) -C client -f Makefile.linux
+
+server:
+	@$(MAKE) -C server -f Makefile.linux
+
+clean:
+	@$(MAKE) -C client -f Makefile.linux clean
+	@$(MAKE) -C server -f Makefile.linux clean

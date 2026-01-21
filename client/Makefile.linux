@@ -1,0 +1,46 @@
+all: client
+
+CC	:= gcc
+CFLAGS  := -pthread
+LDFLAGS := -pthread
+
+BUILD	:= build_linux
+
+ifdef RELEASE
+	CFLAGS += -O2
+else
+	CFLAGS += -g
+endif
+
+ifdef ANDROID__BUILD_VERSION_SDK
+	CFLAGS += -DPOSIX_MUTEX
+else ifdef POSIX_MUTEX
+	CFLAGS += -DPOSIX_MUTEX
+endif
+
+ifdef DEBUG
+	CFLAGS += -DDEBUG
+endif
+ifeq ($(DEBUG),2)
+	CFLAGS += -fsanitize=address,undefined
+	LDFLAGS += -fsanitize=address,undefined
+endif
+
+client: $(BUILD)/client.o $(BUILD)/helpers.o $(BUILD)/ui.o
+	$(CC) $(LDFLAGS) -o client $(BUILD)/client.o $(BUILD)/helpers.o $(BUILD)/ui.o
+
+$(BUILD):
+	mkdir -p $(BUILD)
+
+$(BUILD)/client.o: client.c helpers.h types.h | $(BUILD)
+	$(CC) -c $(CFLAGS) client.c -o $(BUILD)/client.o
+
+$(BUILD)/helpers.o: helpers.c helpers.h | $(BUILD)
+	$(CC) -c $(CFLAGS) helpers.c -o $(BUILD)/helpers.o
+
+$(BUILD)/ui.o: ui.c ui.h | $(BUILD)
+	$(CC) -c $(CFLAGS) ui.c -o $(BUILD)/ui.o
+	
+clean:
+	rm -rf $(BUILD)
+	rm -f client
