@@ -54,7 +54,7 @@ Per validare l'effettiva portabilità e correttezza del codice platform-agnostic
 	- Nintendo Switch: `aarch64-none-elf-gcc` dalla toolchain _devkitPro_
 ## Nintendo Switch
 
-Il port su **Nintendo Switch**, sviluppato nella branch `switch-port`, è stato realizzato con l'obiettivo di verificare se la portabilità e l'efficienza del sistema fossero idonee anche a un contesto embedded caratterizzato da vincoli di esecuzione molto più stringenti rispetto a un desktop standard.
+Il port su **Nintendo Switch**, sviluppato nella branch `switch-port` e mantenuto allineato al `master` nel tempo, è stato realizzato con l'obiettivo di verificare se la portabilità e l'efficienza del sistema fossero idonee anche a un contesto embedded caratterizzato da vincoli di esecuzione molto più stringenti rispetto a un desktop standard.
 - La Switch è una console da gioco prodotta da Nintendo nel 2017. È a tutti gli effetti un dispositivo embedded ad alte prestazioni (4 GB di RAM condivisa, SoC NVIDIA Tegra X1 a 4 core con frequenza di clock ottimizzata per il consumo energetico) che mette a disposizione **un ambiente di esecuzione limitato** dettato dalle scelte di design architetturale del produttore (gestione aggressiva delle risorse in favore dell'autonomia della batteria e della prevedibilità del sistema).
 - Esegue un sistema proprietario, Horizon, che:
     - ha un'architettura a microkernel;
@@ -70,6 +70,8 @@ Il codice è stato portato su Switch mantenendo la sua architettura pressoché i
 - **il passaggio a un approccio di polling non bloccante** su input e rete nel loop principale per rientrare nel vincolo del Game Loop;
 - **gestione sincrona degli eventi** (TCP Urgent data ed errori di rete), data l'assenza dei segnali UNIX;
 - **l'astrazione dell'interfaccia utente**: adattamento delle label dei tasti in modo contestuale al target di compilazione.
+
+_Nota: L'intero porting contiene tutta la logica di `master` ed è stato sviluppato attraverso l'aggiunta di blocchi di compilazione condizionale `#ifdef` sulla base del codice principale: questo rende l'intera base di codice del porting retrocompatibile con gli altri target. Di conseguenza si può compilare il sistema per gli altri target anche da questo ramo attraverso il Makefile alternativo `Makefile.linux`._
 
 ## Compilazione
 ### Standard (Linux/Android)
