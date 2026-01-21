@@ -47,6 +47,7 @@ int semfd;
 int  gAllowGuests = 0;
 int  gPort = 3010;
 char gBoardTitle[256+1] = { 0 };
+int  gTimeoutSeconds = 60 * 15;
 
 Post *gPosts[ MAXPOSTS ];
 int gPostCount = 0;
@@ -118,6 +119,15 @@ int loadConfig( void )
 		}
 		else if ( !strcmp( key_buf, "Title" ) )
 			strncpy( gBoardTitle, value_buf, 256 + 1 );
+		else if ( !strcmp( key_buf, "Timeout" ) )
+		{
+			gTimeoutSeconds = strtol( value_buf, &endptr, 10 );
+			if ( *endptr || gTimeoutSeconds <= 0 )
+			{
+				fprintf( stderr, "loadConfig: valore timeout in secondi non valido.\n" );
+				exit( EXIT_FAILURE );
+			}
+		}
 	}
 
 	if ( fclose( fp ) )
@@ -1115,7 +1125,7 @@ int main( int argc, char *argv[] )
 		}
 
 		struct timeval timeout;
-		timeout.tv_sec  = 60 * 5;
+		timeout.tv_sec  = gTimeoutSeconds;
 		timeout.tv_usec = 0;
 		if ( setsockopt( s_client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof( struct timeval ) ) == -1 )
 			warn( "server: Impossibile impostare il timeout per la sessione di %s, rischio deadlock! Motivo", inet_ntoa( client_addr.sin_addr ) );

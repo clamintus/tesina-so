@@ -115,15 +115,17 @@ Il server ha bisogno di essere configurato: vedi [Configurazione](#configurazion
 ## Configurazione
 Il server ha bisogno di un file di configurazione `serverconf` nella stessa directory dell'eseguibile, strutturato come segue:
 - File `serverconf`: formato `key=value`, chiavi valide:
-	- `AllowGuests`: abilita il terzo livello di privilegi (**int**, 0/1)
-	- `Port`: indica la porta di ascolto da utilizzare (**int**, 0~65535)
+	- `AllowGuests`: abilita il terzo livello di privilegi (**int**, 0/1, default 0)
+	- `Port` (_opzionale_): indica la porta di ascolto da utilizzare (**int**, 0~65535, default 3010)
 	- `Title` (_opzionale_): indica il titolo della bacheca che i client mostreranno nella schermata introduttiva e nell'header nella TUI (**string**, max 250 caratteri)
+    - `Timeout` (_opzionale_): indica il timeout di disconnessione delle sessioni dei client in secondi (**int**, 1\~_INT\_MAX_, default 900 (15 min))
 
 Esempio:
 ```ini
 AllowGuests=0
 Port=3000
 Title=Progetto Sistemi
+Timeout=900
 ```
 Se il server è configurato per non accettare sessioni anonime, necessita obbligatoriamente di aver configurato almeno un utente.
 Gli utenti sono letti da un database testuale presente nella stessa directory dell'eseguibile:
