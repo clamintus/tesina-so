@@ -100,6 +100,7 @@ char *stringifyTimestamp( time_t timestamp )
 #define ANSINEW "\033[1m\033[3m\033[97m\033[5m"
 //#define ANSIMIN "\033[38;2;204;119;34m"
 #define ANSIMIN "\033[36m"
+#define ANSIMIN_NEW "\033[38;2;57;238;202m"
 #define ANSIFGRST "\033[39m"
 unsigned int printWrapped( const char* str, size_t size, unsigned short x0, unsigned short y0, unsigned short x1, unsigned short y1, unsigned int skip )
 {
@@ -555,8 +556,8 @@ int drawTui_listView( ClientState *state )
 		printf( "\033[%d;%dH", 1 + y_off + i - state->page_offset, x_off );
 		printf( "%s%s%s %s%.*s%s %.*s%s", selected ? SEL : UNSEL,
 					          is_new ? ANSINEW : "", ora_post,
-						  ANSIMIN,
-						  mittente_trunc_pos, post->data, ANSIFGRST,
+						  is_new ? ANSIMIN_NEW : ANSIMIN,
+						  mittente_trunc_pos, post->data, is_new ? ANSINEW : ANSIFGRST,
 						  oggetto_trunc_pos,  post->len_oggetto ? post->data + post->len_mittente :
 								 			  ANSIITA "(nessun oggetto)",
 		     			          ANSIRST );
