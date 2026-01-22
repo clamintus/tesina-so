@@ -9,7 +9,7 @@ Sviluppato interamente in C puro e dipendente solo da libc.
 - Protocollo binario ad-hoc ottimizzato ed efficiente
 - Server concorrente multithreaded (thread-per-client)
 - Real-Time
-	- Notifiche TCP Out-Of-Band e segnali SIGURG
+	- Notifiche asincrone TCP Out-Of-Band e segnali SIGURG
 	- I/O multiplexing nel client, massima reattività
 - Split-locked con 2 mutex/semafori
 - Persistenza robusta
