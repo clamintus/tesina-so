@@ -13,7 +13,7 @@ Sviluppato interamente in C puro e dipendente solo da libc.
 	- I/O multiplexing nel client, massima reattività
 - Split-locked con 2 mutex/semafori
 - Persistenza robusta
-	- Database testuale "CRUD-lite" per i post
+	- Database testuale "Create/Read/Delete" per i post
 	- Atomic Save (salvataggio atomico tramite file temporaneo)
 	- Sanitizzazione input
 - Configurabile a 2 o 3 livelli di privilegi
