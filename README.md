@@ -67,7 +67,7 @@ Il port su **Nintendo Switch**, sviluppato nella branch `switch-port` e mantenut
 Il codice è stato portato su Switch mantenendo la sua architettura pressoché intatta: le uniche modifiche apportate riguardano:
 - **la gestione delle idiosincrasie del sistema**: ad esempio interazione hardware/software tramite `libnx` e gestione input con tastiera software di sistema (_Swkbd_);
 - **gestione rigorosa delle risorse**: rispetto dei vincoli sulla stack, dei thread secondari, sulle connessioni TCP (il servizio BSD di sistema permette massimo 16 connessioni simultanee) e ottimizzazione ad-hoc dei buffer TCP;
-- **il passaggio a un approccio di polling non bloccante** su input e rete nel loop principale per rientrare nel vincolo del Game Loop;
+- **il passaggio a un approccio di polling non bloccante** su input (client) e rete (socket di ascolto nel server) nel loop principale per rientrare nel vincolo del Game Loop;
 - **gestione sincrona degli eventi** (TCP Urgent data ed errori di rete), data l'assenza dei segnali UNIX;
 - **l'astrazione dell'interfaccia utente**: adattamento delle label dei tasti in modo contestuale al target di compilazione.
 
